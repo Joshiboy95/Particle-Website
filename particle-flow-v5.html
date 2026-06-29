@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Partikel-Strömung</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@100..900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #07070f; overflow: hidden; font-family: 'Figtree', system-ui, sans-serif; }
+canvas { display: block; position: fixed; inset: 0; }
+
+#btn-settings {
+  position: fixed; top: 16px; right: 16px; width: 42px; height: 42px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 100; color: rgba(255,255,255,0.4);
+  transition: background .2s, border-color .2s, color .2s;
+}
+#btn-settings:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.18); color: rgba(255,255,255,0.85); }
+
+#panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 300px;
+  background: rgba(7,7,16,0.97); backdrop-filter: blur(28px);
+  border-left: 1px solid rgba(255,255,255,0.06); z-index: 200;
+  transform: translateX(100%); transition: transform .3s cubic-bezier(.4,0,.2,1);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#panel.open { transform: translateX(0); }
+
+.ph {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 15px 16px 13px; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0;
+}
+.ph-title { font-size: 10px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,0.35); }
+.ph-actions { display: flex; gap: 4px; align-items: center; }
+.ph-btn {
+  width: 26px; height: 26px; background: none; border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,0.3); transition: all .18s;
+}
+.ph-btn:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.18); }
+#btn-close { width: 26px; height: 26px; background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.3); border-radius: 6px; transition: all .18s; margin-left: 2px; }
+#btn-close:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.8); }
+
+.pb { flex: 1; overflow-y: auto; padding: 14px 20px 24px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
+.pb::-webkit-scrollbar { width: 3px; }
+.pb::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+.sec { margin-bottom: 20px; }
+.sec-lbl { font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,0.18); margin-bottom: 12px; }
+.div { height: 1px; background: rgba(255,255,255,0.05); margin-bottom: 20px; }
+
+.ctrl { margin-bottom: 13px; }
+.ctrl-hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.ctrl-name { font-size: 12px; color: rgba(255,255,255,0.55); }
+.ctrl-val  { font-size: 11px; color: #3b82f6; font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
+
+input[type=range] { width: 100%; height: 2px; -webkit-appearance: none; appearance: none; background: rgba(255,255,255,0.07); border-radius: 2px; cursor: pointer; outline: none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #3b82f6; cursor: pointer; box-shadow: 0 0 6px rgba(59,130,246,.5); transition: transform .15s; }
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; border-radius: 50%; background: #3b82f6; cursor: pointer; }
+
+.tog-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.tog-name { font-size: 12px; color: rgba(255,255,255,0.55); }
+.tog { width: 36px; height: 20px; background: rgba(255,255,255,0.1); border-radius: 10px; position: relative; cursor: pointer; transition: background .2s; flex-shrink: 0; }
+.tog.on { background: #3b82f6; }
+.tog::after { content: ''; position: absolute; width: 14px; height: 14px; background: #fff; border-radius: 50%; top: 3px; left: 3px; transition: left .18s; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.tog.on::after { left: 19px; }
+
+.scheme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sc-btn { padding: 8px 9px 7px; border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.02); transition: all .2s; text-align: left; }
+.sc-btn:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.04); }
+.sc-btn.active { border-color: rgba(59,130,246,.45); background: rgba(59,130,246,.07); }
+.sc-sw { height: 3px; border-radius: 2px; margin-bottom: 7px; }
+.sc-name { font-size: 11px; color: rgba(255,255,255,0.4); }
+.sc-btn.active .sc-name { color: rgba(255,255,255,0.8); }
+
+.drive-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; }
+.drive-btn { padding: 7px 4px; border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02); font-size: 10px; color: rgba(255,255,255,0.38); text-align: center; letter-spacing: .03em; transition: all .15s; font-family: inherit; }
+.drive-btn:hover { border-color: rgba(255,255,255,0.16); color: rgba(255,255,255,0.7); }
+.drive-btn.active { border-color: rgba(59,130,246,.55); background: rgba(59,130,246,.09); color: rgba(255,255,255,0.88); }
+
+.btn-row { display: flex; gap: 8px; margin-top: 8px; }
+.btn-ghost { flex: 1; padding: 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: rgba(255,255,255,0.35); font-size: 11px; font-family: inherit; cursor: pointer; transition: all .2s; }
+.btn-ghost:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7); }
+
+/* Performance badge */
+.perf-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+.perf-label { font-size: 12px; color: rgba(255,255,255,0.35); }
+.fps-badge { font-size: 11px; font-variant-numeric: tabular-nums; padding: 2px 8px; border-radius: 4px; background: rgba(59,246,100,.08); color: rgba(100,246,140,.8); border: 1px solid rgba(59,246,100,.15); }
+.fps-badge.warn { background: rgba(246,180,59,.08); color: rgba(246,200,80,.8); border-color: rgba(246,180,59,.15); }
+.fps-badge.bad  { background: rgba(246,59,59,.08);  color: rgba(246,100,80,.8); border-color: rgba(246,59,59,.15); }
+.draw-calls { font-size: 10px; color: rgba(255,255,255,0.2); margin-top: 2px; }
+
+/* Editable values */
+.ctrl-val { cursor: text; transition: color .15s; user-select: none; }
+.ctrl-val:hover { color: rgba(120,175,255,0.95); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+.ctrl-val-inp { background: none; border: none; border-bottom: 1px solid rgba(59,130,246,.7); color: #60a5fa; font-size: 11px; font-family: 'Figtree', system-ui, sans-serif; font-variant-numeric: tabular-nums; min-width: 44px; max-width: 90px; text-align: right; outline: none; padding: 0 0 1px 0; }
+.ctrl-val-inp::-webkit-inner-spin-button, .ctrl-val-inp::-webkit-outer-spin-button { -webkit-appearance: none; }
+.ctrl-val-inp[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
+/* Animation subsection */
+.anim-sub { border-top: 1px solid rgba(255,255,255,0.04); margin-top: 4px; padding-top: 8px; margin-bottom: 14px; }
+.anim-sub .tog-row { margin-bottom: 8px; }
+.anim-sub .tog-name { font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: .02em; }
+.anim-inner { }
+.anim-inner .ctrl { margin-bottom: 10px; }
+.anim-inner .ctrl-name { font-size: 11px; color: rgba(255,255,255,0.42); }
+.anim-prog { margin-top: 4px; margin-bottom: 2px; }
+.anim-prog-bar { height: 2px; background: rgba(255,255,255,0.07); border-radius: 2px; overflow: hidden; }
+.anim-prog-bar > div { height: 100%; background: rgba(59,130,246,.55); border-radius: 2px; }
+.anim-prog-labels { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: rgba(255,255,255,0.2); }
+
+/* Custom gradient editor */
+#custom-editor { margin-top: 12px; }
+.cstop-row { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+.cstop-swatch { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.1); }
+.cstop-hue { flex: 1; }
+.cstop-val { font-size: 10px; color: #3b82f6; min-width: 28px; text-align: right; font-variant-numeric: tabular-nums; }
+.cstop-del { background: none; border: none; color: rgba(255,255,255,0.25); cursor: pointer; font-size: 15px; padding: 0 2px; line-height: 1; transition: color .15s; flex-shrink: 0; }
+.cstop-del:hover { color: rgba(255,80,80,.75); }
+.cstop-add { width: 100%; padding: 8px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.12); border-radius: 7px; color: rgba(255,255,255,0.3); font-size: 11px; font-family: inherit; cursor: pointer; transition: all .2s; margin-top: 2px; }
+.cstop-add:hover { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.6); }
+
+#hint { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.13); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; pointer-events: none; transition: opacity 2.5s; white-space: nowrap; z-index: 50; }
+
+/* ── Farb-Animation Schrittliste ─────────────────────────────────────── */
+.col-step { display:flex; align-items:center; gap:8px; padding:7px 9px; background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.06); border-radius:7px; margin-bottom:7px; }
+.col-step.step-active { border-color:rgba(59,130,246,.45); background:rgba(59,130,246,.06); }
+.col-step-dot { width:6px; height:6px; border-radius:50%; background:#3b82f6; flex-shrink:0; opacity:0; }
+.col-step.step-active .col-step-dot { opacity:1; }
+.col-step-swatch { height:12px; border-radius:3px; flex:1; min-width:0; }
+.col-step-label { font-size:11px; color:rgba(255,255,255,0.5); white-space:nowrap; }
+.col-step-del { background:none; border:none; color:rgba(255,255,255,0.2); cursor:pointer; font-size:15px; padding:0 2px; line-height:1; transition:color .15s; flex-shrink:0; }
+.col-step-del:hover { color:rgba(255,80,80,.75); }
+
+/* ── Text-Eingabefeld ─────────────────────────────────────────────────── */
+.text-inp { width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:7px; color:rgba(255,255,255,0.75); font-size:13px; font-family:'Figtree',system-ui,sans-serif; padding:8px 10px; outline:none; transition:border-color .2s, background .2s; letter-spacing:.04em; }
+.text-inp:focus { border-color:rgba(59,130,246,.5); background:rgba(255,255,255,0.07); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<input type="file" id="file-import" accept=".json" style="display:none">
+
+<button id="btn-settings">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7zm7.43-2.92.07-.98c0-.33-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.58-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.32-.07.65-.07.98s.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66z"/>
+  </svg>
+</button>
+
+<div id="panel">
+  <div class="ph">
+    <span class="ph-title">Einstellungen</span>
+    <div class="ph-actions">
+      <button class="ph-btn" id="btn-import" title="Importieren (.json)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+      </button>
+      <button class="ph-btn" id="btn-export" title="Exportieren (.json)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+      </button>
+      <button id="btn-close">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="pb">
+
+    <!-- Performance -->
+    <div class="sec">
+      <div class="sec-lbl">Performance</div>
+      <div class="perf-row"><span class="perf-label">FPS</span><span class="fps-badge" id="v-fps">60</span></div>
+      <div class="draw-calls" id="v-draws">32 Draw Calls / Frame</div>
+    </div>
+    <div class="div"></div>
+
+    <!-- Farbe -->
+    <div class="sec">
+      <div class="sec-lbl">Farbschema</div>
+      <div class="scheme-grid">
+        <div class="sc-btn" data-scheme="blue"><div class="sc-sw" style="background:linear-gradient(90deg,#0d1b4a,#1a6fd4,#44ccff)"></div><div class="sc-name">Blau</div></div>
+        <div class="sc-btn" data-scheme="dual"><div class="sc-sw" style="background:linear-gradient(90deg,#c8860b,#1a6fd4)"></div><div class="sc-name">Gold + Blau</div></div>
+        <div class="sc-btn" data-scheme="indigo"><div class="sc-sw" style="background:linear-gradient(90deg,#0d0d1a,#2a2a6a,#5566cc)"></div><div class="sc-name">Indigo</div></div>
+        <div class="sc-btn" data-scheme="ember"><div class="sc-sw" style="background:linear-gradient(90deg,#1a0505,#c03010,#ff8844)"></div><div class="sc-name">Ember</div></div>
+        <div class="sc-btn" data-scheme="rainbow"><div class="sc-sw" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)"></div><div class="sc-name">Regenbogen</div></div>
+        <div class="sc-btn" data-scheme="aurora"><div class="sc-sw" style="background:linear-gradient(90deg,#00c060,#00ccaa,#4466ff,#8833ee)"></div><div class="sc-name">Polarlicht</div></div>
+        <div class="sc-btn" data-scheme="neon"><div class="sc-sw" style="background:linear-gradient(90deg,#f0f,#0ff,#0f8)"></div><div class="sc-name">Neon</div></div>
+        <div class="sc-btn" data-scheme="sunset"><div class="sc-sw" style="background:linear-gradient(90deg,#ff6a00,#ee0979,#7b2ff7)"></div><div class="sc-name">Sonnenunt.</div></div>
+        <div class="sc-btn" data-scheme="ocean"><div class="sc-sw" style="background:linear-gradient(90deg,#0a1628,#0055a0,#00c8cc)"></div><div class="sc-name">Ozean</div></div>
+        <div class="sc-btn active" data-scheme="custom"><div class="sc-sw" id="custom-scheme-sw" style="background:linear-gradient(90deg,#3af,#f3a,#fa3)"></div><div class="sc-name">Eigener</div></div>
+      </div>
+      <div style="margin-top:12px">
+        <div class="sec-lbl">Farbantrieb</div>
+        <div class="drive-grid">
+          <div class="drive-btn" data-drive="seed">Zufall</div>
+          <div class="drive-btn active" data-drive="velocity">Geschw.</div>
+          <div class="drive-btn" data-drive="posX">Pos. X</div>
+          <div class="drive-btn" data-drive="posY">Pos. Y</div>
+          <div class="drive-btn" data-drive="age">Alter</div>
+          <div class="drive-btn" data-drive="mixed">Gemischt</div>
+        </div>
+      </div>
+      <div id="custom-editor" style="margin-top:14px">
+        <div class="sec-lbl">Farbverlauf</div>
+        <div id="custom-preview" style="height:8px;border-radius:4px;margin-bottom:12px"></div>
+        <div id="custom-stops"></div>
+        <div class="ctrl" style="margin-top:6px">
+          <div class="ctrl-hd"><span class="ctrl-name">Sättigung</span><span class="ctrl-val" id="v-csat">80</span></div>
+          <input type="range" id="s-csat" min="0" max="100" step="1" value="80">
+        </div>
+        <button class="cstop-add" id="btn-add-stop">+ Farbe hinzufügen</button>
+      </div>
+    </div>
+    <div class="div"></div>
+
+    <!-- Farbverlauf-Animation -->
+    <div class="sec">
+      <div class="sec-lbl">Farbverläufe animieren</div>
+      <div class="tog-row"><span class="tog-name">Aktiv</span><div class="tog" id="t-color-anim"></div></div>
+      <div id="color-anim-body" style="display:none">
+        <div class="ctrl">
+          <div class="ctrl-hd"><span class="ctrl-name">Haltezeit</span><span class="ctrl-val" id="v-colhold">8 s</span></div>
+          <input type="range" id="s-colhold" min="0.5" max="60" step="0.5" value="8">
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-hd"><span class="ctrl-name">Übergang</span><span class="ctrl-val" id="v-coltrans">3 s</span></div>
+          <input type="range" id="s-coltrans" min="0.1" max="20" step="0.1" value="3">
+        </div>
+        <div class="sec-lbl" style="margin-top:10px;margin-bottom:8px">Farbfolge</div>
+        <div id="color-step-list"></div>
+        <!-- Progress bar (hold phase = filling, transition = blue pulse) -->
+        <div style="height:2px;background:rgba(255,255,255,0.07);border-radius:2px;margin:6px 0 4px;overflow:hidden">
+          <div id="color-anim-prog" style="height:100%;width:0%;border-radius:2px;background:rgba(59,130,246,.6);transition:background .3s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:10px;color:rgba(255,255,255,0.2)" id="color-anim-phase">Warte</span>
+          <span style="font-size:10px;color:rgba(59,130,246,.5)" id="color-anim-next">–</span>
+        </div>
+        <button class="cstop-add" id="btn-add-color-step">+ Aktuelles Schema als Schritt</button>
+      </div>
+    </div>
+    <div class="div"></div>
+
+    <!-- Partikel -->
+    <div class="sec">
+      <div class="sec-lbl">Partikel</div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Anzahl</span><span class="ctrl-val" id="v-count">100 000</span></div>
+        <input type="range" id="s-count" min="500" max="200000" step="500" value="100000">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Lebensdauer</span><span class="ctrl-val" id="v-life">700</span></div>
+        <input type="range" id="s-life" min="30" max="2000" step="10" value="700">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Helligkeit</span><span class="ctrl-val" id="v-alpha">0.520</span></div>
+        <input type="range" id="s-alpha" min="0.004" max="1.5" step="0.004" value="0.52">
+      </div>
+      <!-- Helligkeit-Animation -->
+      <div class="anim-sub">
+        <div class="tog-row"><span class="tog-name">↻ Helligkeit animieren</span><div class="tog" id="t-anim-alpha"></div></div>
+        <div class="anim-inner" id="ain-alpha" style="display:none">
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Min</span><span class="ctrl-val" id="v-amin-alpha">0.050</span></div><input type="range" id="s-amin-alpha" min="0.004" max="1.5" step="0.004" value="0.05"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Max</span><span class="ctrl-val" id="v-amax-alpha">1.000</span></div><input type="range" id="s-amax-alpha" min="0.004" max="1.5" step="0.004" value="1.0"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Dauer</span><span class="ctrl-val" id="v-adur-alpha">6 s</span></div><input type="range" id="s-adur-alpha" min="1" max="60" step="1" value="6"></div>
+          <div class="anim-prog"><div class="anim-prog-bar"><div id="apb-alpha"></div></div><div class="anim-prog-labels"><span id="apl-alpha">0.050</span><span id="apc-alpha" style="color:rgba(59,130,246,.6)">–</span><span id="apr-alpha">1.000</span></div></div>
+        </div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Linienbreite</span><span class="ctrl-val" id="v-lw">0.9</span></div>
+        <input type="range" id="s-lw" min="0.1" max="6.0" step="0.1" value="0.9">
+      </div>
+    </div>
+    <div class="div"></div>
+
+    <!-- Strömung -->
+    <div class="sec">
+      <div class="sec-lbl">Strömung</div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Geschwindigkeit</span><span class="ctrl-val" id="v-speed">0.25</span></div>
+        <input type="range" id="s-speed" min="0.05" max="8.0" step="0.05" value="0.25">
+      </div>
+      <!-- Geschwindigkeit-Animation -->
+      <div class="anim-sub">
+        <div class="tog-row"><span class="tog-name">↻ Geschwindigkeit animieren</span><div class="tog on" id="t-anim-speed"></div></div>
+        <div class="anim-inner" id="ain-speed" style="display:block">
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Min</span><span class="ctrl-val" id="v-amin-speed">0.05</span></div><input type="range" id="s-amin-speed" min="0.05" max="8.0" step="0.05" value="0.05"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Max</span><span class="ctrl-val" id="v-amax-speed">0.60</span></div><input type="range" id="s-amax-speed" min="0.05" max="8.0" step="0.05" value="0.6"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Dauer</span><span class="ctrl-val" id="v-adur-speed">8 s</span></div><input type="range" id="s-adur-speed" min="1" max="60" step="1" value="8"></div>
+          <div class="anim-prog"><div class="anim-prog-bar"><div id="apb-speed"></div></div><div class="anim-prog-labels"><span id="apl-speed">0.05</span><span id="apc-speed" style="color:rgba(59,130,246,.6)">–</span><span id="apr-speed">0.60</span></div></div>
+        </div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Wirbelstärke</span><span class="ctrl-val" id="v-turb">5.5</span></div>
+        <input type="range" id="s-turb" min="0.3" max="15.0" step="0.1" value="5.5">
+      </div>
+      <!-- Wirbelstärke-Animation -->
+      <div class="anim-sub">
+        <div class="tog-row"><span class="tog-name">↻ Wirbelstärke animieren</span><div class="tog on" id="t-anim-turb"></div></div>
+        <div class="anim-inner" id="ain-turb" style="display:block">
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Min</span><span class="ctrl-val" id="v-amin-turb">1.8</span></div><input type="range" id="s-amin-turb" min="0.3" max="15.0" step="0.1" value="1.8"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Max</span><span class="ctrl-val" id="v-amax-turb">6.5</span></div><input type="range" id="s-amax-turb" min="0.3" max="15.0" step="0.1" value="6.5"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Dauer</span><span class="ctrl-val" id="v-adur-turb">10 s</span></div><input type="range" id="s-adur-turb" min="1" max="60" step="1" value="10"></div>
+          <div class="anim-prog"><div class="anim-prog-bar"><div id="apb-turb"></div></div><div class="anim-prog-labels"><span id="apl-turb">1.8</span><span id="apc-turb" style="color:rgba(59,130,246,.6)">–</span><span id="apr-turb">6.5</span></div></div>
+        </div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Zeitentwicklung</span><span class="ctrl-val" id="v-tscale">3.0</span></div>
+        <input type="range" id="s-tscale" min="0" max="30" step="0.5" value="3.0">
+      </div>
+      <!-- Zeitentwicklung-Animation -->
+      <div class="anim-sub">
+        <div class="tog-row"><span class="tog-name">↻ Zeitentwicklung animieren</span><div class="tog" id="t-anim-tscale"></div></div>
+        <div class="anim-inner" id="ain-tscale" style="display:none">
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Min</span><span class="ctrl-val" id="v-amin-tscale">0.0</span></div><input type="range" id="s-amin-tscale" min="0" max="30" step="0.5" value="0"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Max</span><span class="ctrl-val" id="v-amax-tscale">6.0</span></div><input type="range" id="s-amax-tscale" min="0" max="30" step="0.5" value="6"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Dauer</span><span class="ctrl-val" id="v-adur-tscale">15 s</span></div><input type="range" id="s-adur-tscale" min="1" max="60" step="1" value="15"></div>
+          <div class="anim-prog"><div class="anim-prog-bar"><div id="apb-tscale"></div></div><div class="anim-prog-labels"><span id="apl-tscale">0.0</span><span id="apc-tscale" style="color:rgba(59,130,246,.6)">–</span><span id="apr-tscale">6.0</span></div></div>
+        </div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Dämpfung</span><span class="ctrl-val" id="v-damp">0.95</span></div>
+        <input type="range" id="s-damp" min="0.80" max="0.999" step="0.001" value="0.95">
+      </div>
+    </div>
+    <div class="div"></div>
+
+    <!-- Spur & Glühen -->
+    <div class="sec">
+      <div class="sec-lbl">Spur &amp; Glühen</div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Spurlänge <span style="color:rgba(255,255,255,0.2);font-size:10px">(niedrig=länger)</span></span><span class="ctrl-val" id="v-trail">0.06</span></div>
+        <input type="range" id="s-trail" min="0.005" max="1.0" step="0.005" value="0.06">
+      </div>
+      <!-- Spurlänge-Animation -->
+      <div class="anim-sub">
+        <div class="tog-row"><span class="tog-name">↻ Spurlänge animieren</span><div class="tog" id="t-anim-trail"></div></div>
+        <div class="anim-inner" id="ain-trail" style="display:none">
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Min</span><span class="ctrl-val" id="v-amin-trail">0.010</span></div><input type="range" id="s-amin-trail" min="0.005" max="1.0" step="0.005" value="0.01"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Max</span><span class="ctrl-val" id="v-amax-trail">0.150</span></div><input type="range" id="s-amax-trail" min="0.005" max="1.0" step="0.005" value="0.15"></div>
+          <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Dauer</span><span class="ctrl-val" id="v-adur-trail">12 s</span></div><input type="range" id="s-adur-trail" min="1" max="60" step="1" value="12"></div>
+          <div class="anim-prog"><div class="anim-prog-bar"><div id="apb-trail"></div></div><div class="anim-prog-labels"><span id="apl-trail">0.010</span><span id="apc-trail" style="color:rgba(59,130,246,.6)">–</span><span id="apr-trail">0.150</span></div></div>
+        </div>
+      </div>
+      <div class="tog-row">
+        <span class="tog-name">Additives Glühen</span>
+        <div class="tog on" id="t-add"></div>
+      </div>
+    </div>
+    <div class="div"></div>
+
+    <!-- Maus -->
+    <div class="sec">
+      <div class="sec-lbl">Maus-Interaktion</div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Gravitationsstärke</span><span class="ctrl-val" id="v-grav">3 000</span></div>
+        <input type="range" id="s-grav" min="0" max="80000" step="500" value="3000">
+      </div>
+    </div>
+    <div class="div"></div>
+
+    <!-- Auto-Klick -->
+    <div class="sec">
+      <div class="sec-lbl">Auto-Klick Simulation</div>
+      <div class="tog-row"><span class="tog-name">Aktiv</span><div class="tog on" id="t-auto"></div></div>
+      <div id="auto-controls" style="transition:opacity .2s">
+        <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Intervall</span><span class="ctrl-val" id="v-autoint">2.5 s</span></div><input type="range" id="s-autoint" min="0.5" max="30" step="0.5" value="2.5"></div>
+        <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Klickdauer</span><span class="ctrl-val" id="v-autodur">1.2 s</span></div><input type="range" id="s-autodur" min="0.1" max="15" step="0.1" value="1.2"></div>
+        <div class="ctrl">
+          <div class="ctrl-hd"><span class="ctrl-name">Stärke <span style="color:rgba(255,255,255,0.2);font-size:10px">(²-Skala)</span></span><span class="ctrl-val" id="v-autograv">100</span></div>
+          <input type="range" id="s-autograv" min="0" max="200" step="1" value="10">
+        </div>
+        <div style="margin-top:6px"><div style="height:2px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden"><div id="auto-bar" style="height:100%;width:0%;background:rgba(59,130,246,.5)"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:10px;color:rgba(255,255,255,0.2)" id="auto-status">Warte</span><span style="font-size:10px;color:rgba(59,130,246,.5)" id="auto-next">–</span></div></div>
+      </div>
+    </div>
+
+    <div class="div"></div>
+
+    <!-- Text-Gravitationsfeld -->
+    <div class="sec">
+      <div class="sec-lbl">Text-Gravitationsfeld</div>
+      <div class="tog-row"><span class="tog-name">Aktiv</span><div class="tog" id="t-text-grav"></div></div>
+      <div id="text-grav-body" style="display:none">
+        <div class="ctrl" style="margin-bottom:10px">
+          <div class="ctrl-hd" style="margin-bottom:6px"><span class="ctrl-name">Inhalt</span></div>
+          <input type="text" id="text-content-inp" class="text-inp" value="Joshiboy95" maxlength="60" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-hd"><span class="ctrl-name">Schriftgröße</span><span class="ctrl-val" id="v-textsize">120</span></div>
+          <input type="range" id="s-textsize" min="10" max="600" step="5" value="120">
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-hd"><span class="ctrl-name">Schriftgewicht</span><span class="ctrl-val" id="v-textweight">400</span></div>
+          <input type="range" id="s-textweight" min="100" max="900" step="50" value="400">
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-hd"><span class="ctrl-name">Gravitationsstärke</span><span class="ctrl-val" id="v-textgrav">200</span></div>
+          <input type="range" id="s-textgrav" min="0" max="1000" step="5" value="200">
+        </div>
+        <!-- Zeitliche Animation der Gravitationsstärke -->
+        <div class="anim-sub" style="margin-top:2px">
+          <div class="tog-row"><span class="tog-name">↻ Gravitation animieren</span><div class="tog" id="t-anim-textGravStr"></div></div>
+          <div class="anim-inner" id="ain-textGravStr" style="display:none">
+            <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Min</span><span class="ctrl-val" id="v-amin-textGravStr">0</span></div><input type="range" id="s-amin-textGravStr" min="0" max="1000" step="5" value="0"></div>
+            <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Max</span><span class="ctrl-val" id="v-amax-textGravStr">2.000</span></div><input type="range" id="s-amax-textGravStr" min="0" max="3000" step="5" value="2000"></div>
+            <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Dauer</span><span class="ctrl-val" id="v-adur-textGravStr">6 s</span></div><input type="range" id="s-adur-textGravStr" min="1" max="60" step="1" value="6"></div>
+            <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Pause</span><span class="ctrl-val" id="v-apause-textGravStr">3.0 s</span></div><input type="range" id="s-apause-textGravStr" min="0" max="60" step="0.5" value="3"></div>
+            <div class="anim-prog"><div class="anim-prog-bar"><div id="apb-textGravStr"></div></div><div class="anim-prog-labels"><span id="apl-textGravStr">0</span><span id="apc-textGravStr" style="color:rgba(59,130,246,.6)">–</span><span id="apr-textGravStr">600</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-ghost" id="btn-clear">Leinwand leeren</button>
+      <button class="btn-ghost" id="btn-reset">Zurücksetzen</button>
+    </div>
+  </div>
+</div>
+
+<div id="hint">Linksklick halten · Gravitation &nbsp;—&nbsp; Rechtsklick · Abstoßung</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+//  PARTIKEL-STRÖMUNG v4
+// ═══════════════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('c');
+// WebGL primär; Canvas 2D als Fallback wenn WebGL nicht verfügbar
+let ctx = null, gl = null;
+let _glProg, _aPos, _aCol, _uRes, _glVbo, _glQuadVbo;
+let _vboData = null; // wird in initWebGL() alloziert
+let _vboCount = 0;
+const BG = '#07070f';
+const BG_R = 7/255, BG_G = 7/255, BG_B = 15/255;
+let W = 0, H = 0;
+
+let _dpr = 1; // devicePixelRatio, einmalig gesetzt
+
+function _updateQuadVbo() {
+  if (!gl) return;
+  const ta = S.trail;
+  gl.bindBuffer(gl.ARRAY_BUFFER, _glQuadVbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    0,0, BG_R,BG_G,BG_B,ta,  W,0, BG_R,BG_G,BG_B,ta,
+    0,H, BG_R,BG_G,BG_B,ta,  W,H, BG_R,BG_G,BG_B,ta,
+  ]), gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, _glVbo);
+}
+function resize() {
+  _dpr = window.devicePixelRatio || 1;
+  W = canvas.width  = Math.round(window.innerWidth  * _dpr);
+  H = canvas.height = Math.round(window.innerHeight * _dpr);
+  // CSS-Größe = logische Pixel → Browser skaliert auf physische Pixel scharf
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  if (gl) { gl.viewport(0,0,W,H); gl.uniform2f(_uRes,W,H); _updateQuadVbo(); }
+  clearCanvas(); markTextDirty();
+}
+function clearCanvas() {
+  if (gl) { gl.clear(gl.COLOR_BUFFER_BIT); return; }
+  ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = BG; ctx.fillRect(0,0,W,H);
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────
+const DEFAULTS = {
+  count: 154500, life: 410,  alpha: 1.5,  lw: 2.4,
+  speed: 0.25,   turb: 4.0,  tscale: 18.5, damp: 0.90,
+  trail: 0.06,   additive: true,
+  gravity: 32000, scheme: 'neon', colorDrive: 'velocity',
+  customStops: [{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}], customSat: 80,
+  // Animations
+  turbAnim:  true,  turbMin:  1.8,  turbMax:  6.5,  turbDur:  15,
+  speedAnim: true,  speedMin: 0.05, speedMax: 0.60, speedDur: 26,
+  alphaAnim: false, alphaMin: 0.05, alphaMax: 1.5,  alphaDur: 6,
+  trailAnim: false, trailMin: 0.01, trailMax: 0.15, trailDur: 12,
+  tscaleAnim:false, tscaleMin:0.0,  tscaleMax:6.0,  tscaleDur:15,
+  // Text-Gravitationsfeld
+  textGravOn: true, textContent: 'Joshiboy95',
+  textSize: 45, textWeight: 150,
+  textGravStr: 0,
+  textGravAnim: true, textGravMin: 0, textGravMax: 2000, textGravDur: 5, textGravPause: 36,
+  // Farbverlauf-Animation
+  colorAnimOn: true, colorAnimHold: 16.5, colorAnimTrans: 19.8,
+  colorAnimList: [
+    { scheme:'ember' },
+    { scheme:'custom', customStops:[{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}], customSat:80 },
+    { scheme:'sunset' },
+    { scheme:'neon'   },
+  ],
+  // Auto-Klick
+  autoClick: true, autoInterval: 10.5, autoDuration: 2.3, autoGravity: 32041,
+};
+const S = {
+  ...DEFAULTS,
+  customStops: DEFAULTS.customStops.map(s=>({...s})),
+  colorAnimList: DEFAULTS.colorAnimList.map(step=>({...step, ...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})})),
+};
+
+// ─── Animation parameter config ────────────────────────────────────────
+// Each entry drives the generic tick + UI system
+const ANIM_CFG = [
+  { key:'turb',   onKey:'turbAnim',   minKey:'turbMin',   maxKey:'turbMax',   durKey:'turbDur',
+    sid:'s-turb',  vid:'v-turb',  fmt:'f1', onChange:()=>clearCanvas() },
+  { key:'speed',  onKey:'speedAnim',  minKey:'speedMin',  maxKey:'speedMax',  durKey:'speedDur',
+    sid:'s-speed', vid:'v-speed', fmt:'f2' },
+  { key:'alpha',  onKey:'alphaAnim',  minKey:'alphaMin',  maxKey:'alphaMax',  durKey:'alphaDur',
+    sid:'s-alpha', vid:'v-alpha', fmt:'f3', onChange:()=>buildPalette() },
+  { key:'trail',  onKey:'trailAnim',  minKey:'trailMin',  maxKey:'trailMax',  durKey:'trailDur',
+    sid:'s-trail', vid:'v-trail', fmt:'f2', onChange:()=>rebuildTrail() },
+  { key:'tscale', onKey:'tscaleAnim', minKey:'tscaleMin', maxKey:'tscaleMax', durKey:'tscaleDur',
+    sid:'s-tscale',vid:'v-tscale',fmt:'f1' },
+  { key:'textGravStr', onKey:'textGravAnim', minKey:'textGravMin', maxKey:'textGravMax', durKey:'textGravDur',
+    sid:'s-textgrav', vid:'v-textgrav', fmt:'fi', pauseKey:'textGravPause' },
+];
+
+// ─── Trail cache ───────────────────────────────────────────────────────
+let trailStyle = `rgba(7,7,15,${S.trail})`;
+function rebuildTrail() { trailStyle = `rgba(7,7,15,${S.trail})`; _updateQuadVbo(); }
+
+// ─── Perlin Noise ──────────────────────────────────────────────────────
+const _p = new Uint8Array(256);
+for (let i=0;i<256;i++) _p[i]=i;
+for (let i=255;i>0;i--){const j=Math.random()*(i+1)|0;const t=_p[i];_p[i]=_p[j];_p[j]=t;}
+const PERM = new Uint8Array(512);
+for (let i=0;i<512;i++) PERM[i]=_p[i&255];
+function _f(t){return t*t*t*(t*(t*6-15)+10);}
+function _g(h,x,y){switch(h&7){case 0:return x+y;case 1:return -x+y;case 2:return x-y;case 3:return -x-y;case 4:return x;case 5:return -x;case 6:return y;case 7:return -y;}}
+function noise(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(x);y-=Math.floor(y);const u=_f(x),v=_f(y);const a=PERM[X]+Y,b=PERM[X+1]+Y;return(1-v)*((1-u)*_g(PERM[a],x,y)+u*_g(PERM[b],x-1,y))+v*((1-u)*_g(PERM[a+1],x,y-1)+u*_g(PERM[b+1],x-1,y-1));}
+
+// ─── Flow Field ────────────────────────────────────────────────────────
+const COLS=64,ROWS=45;
+const FVX=new Float32Array(COLS*ROWS),FVY=new Float32Array(COLS*ROWS);
+function updateField(t){const E=0.04,sc=S.turb,te=t*S.tscale*0.0008;for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){const nx=(c/COLS)*sc,ny=(r/ROWS)*sc,i=r*COLS+c;FVX[i]=(noise(nx,ny+E+te)-noise(nx,ny-E+te))/(2*E);FVY[i]=-(noise(nx+E,ny+te*0.78)-noise(nx-E,ny+te*0.78))/(2*E);}}
+let _fx=0,_fy=0;
+function sampleFieldInto(x,y){const fc=Math.max(0,Math.min((x/W)*(COLS-1),COLS-1.001)),fr=Math.max(0,Math.min((y/H)*(ROWS-1),ROWS-1.001));const c0=fc|0,c1=Math.min(c0+1,COLS-1),r0=fr|0,r1=Math.min(r0+1,ROWS-1);const tc=fc-c0,tr=fr-r0;const i00=r0*COLS+c0,i10=r0*COLS+c1,i01=r1*COLS+c0,i11=r1*COLS+c1;_fx=(1-tr)*((1-tc)*FVX[i00]+tc*FVX[i10])+tr*((1-tc)*FVX[i01]+tc*FVX[i11]);_fy=(1-tr)*((1-tc)*FVY[i00]+tc*FVY[i10])+tr*((1-tc)*FVY[i01]+tc*FVY[i11]);}
+
+// ─── Colour Palette ────────────────────────────────────────────────────
+const N_HUE=16,N_BRT=2,N_TOTAL=N_HUE*N_BRT;
+const PALETTE=new Array(N_TOTAL).fill('');
+const PALETTE_RGBA=new Float32Array(N_TOTAL*4); // [r,g,b,a] floats 0-1 für WebGL
+let _inColorTrans=false;
+
+// HSL (0-360, 0-100, 0-100) → RGB (0-1)  — schnelle Pure-JS Implementierung
+function hslToRgbf(h,s,l){
+  s/=100;l/=100;
+  const f=n=>{const k=(n+h/30)%12,a=s*Math.min(l,1-l);return l-a*Math.max(-1,Math.min(k-3,Math.min(9-k,1)));};
+  return [f(0),f(8),f(4)];
+}
+
+function buildPalette(){
+  if(_inColorTrans) return;
+  const a=S.alpha,sc=S.scheme;
+  for(let h=0;h<N_HUE;h++){
+    const t=(h+.5)/N_HUE;
+    for(let b=0;b<N_BRT;b++){
+      const str=schemeColor(t,sc,a,b===1);
+      const idx=h*N_BRT+b;
+      PALETTE[idx]=str;
+      // RGBA für WebGL aus HSLA-String parsen
+      const m=str.match(/hsla\(([\d.]+),([\d.]+)%,([\d.]+)%,([\d.]+)\)/);
+      if(m){const [r,g,b2]=hslToRgbf(+m[1],+m[2],+m[3]);const j=idx*4;
+        PALETTE_RGBA[j]=r;PALETTE_RGBA[j+1]=g;PALETTE_RGBA[j+2]=b2;PALETTE_RGBA[j+3]=+m[4];}
+    }
+  }
+}
+function schemeColor(t,scheme,alpha,bright){
+  const a=bright?alpha:alpha*.42,b=bright;
+  switch(scheme){
+    case 'blue':{const h=(200+t*55)|0;return `hsla(${h},82%,${b?56:36}%,${a})`;}
+    case 'dual':{const h=t<.5?(30+t*60)|0:(205+t*90)|0,s=t<.5?90:82;return `hsla(${h},${s}%,${b?60:38}%,${a})`;}
+    case 'indigo':{const h=(218+t*35)|0;return `hsla(${h},38%,${b?46:26}%,${a})`;}
+    case 'ember':{const h=(t*38)|0;return `hsla(${h},88%,${b?52:32}%,${a})`;}
+    case 'rainbow':{const h=(t*360)|0;return `hsla(${h},92%,${b?58:36}%,${a})`;}
+    case 'aurora':{const h=(115+t*175)|0,l=b?(52-t*8)|0:(30-t*5)|0;return `hsla(${h},88%,${l}%,${a})`;}
+    case 'neon':{const h=((300-t*180)+360)%360|0;return `hsla(${h},100%,${b?60:38}%,${a})`;}
+    case 'sunset':{const h=((28-t*108)+360)%360|0;return `hsla(${h},90%,${b?56:34}%,${a})`;}
+    case 'ocean':{const h=(238-t*68)|0,l=b?(28+t*30)|0:(15+t*18)|0;return `hsla(${h},88%,${l}%,${a})`;}
+    case 'custom':{const stops=S.customStops,n=stops.length;if(n===1)return `hsla(${stops[0].h},${S.customSat}%,${b?50:28}%,${a})`;const pos=t*(n-1),idx=Math.min(Math.floor(pos),n-2),lt=pos-idx,h0=stops[idx].h,h1=stops[idx+1].h;let dh=h1-h0;if(dh>180)dh-=360;if(dh<-180)dh+=360;const h=((h0+dh*lt)+360)%360|0;return `hsla(${h},${S.customSat}%,${b?52:28}%,${a})`;}
+  }
+  return `hsla(210,80%,${b?50:30}%,${a})`;
+}
+
+// ─── Text Gravity Field ────────────────────────────────────────────────
+// Eigenes hochauflösendes Gitter (4× Flow-Field) damit dünne Buchstabenstriche
+// sicher erfasst werden — bei 64×45 waren Zellen ~30px breit, zu grob.
+const _tc2 = document.createElement('canvas');
+const _tx2 = _tc2.getContext('2d', {willReadFrequently: true});
+const TC = 256, TR = 180; // Text-Feld Auflösung (vs COLS=64, ROWS=45 für Flow)
+const textFieldTX = new Float32Array(TC * TR);
+const textFieldTY = new Float32Array(TC * TR);
+let _textActive = false;
+let _textDirty  = false;
+
+function buildTextField() {
+  if (!S.textGravOn) { _textActive = false; return; }
+  _tc2.width = W; _tc2.height = H;
+  _tx2.fillStyle = '#000'; _tx2.fillRect(0, 0, W, H);
+  _tx2.fillStyle = '#fff';
+  // Schriftgröße mit DPR skalieren damit Text korrekte physische Größe hat
+  _tx2.font = `${S.textWeight} ${S.textSize * _dpr}px "Figtree", system-ui, sans-serif`;
+  _tx2.textAlign = 'center'; _tx2.textBaseline = 'middle';
+  _tx2.fillText(S.textContent || ' ', W / 2, H / 2);
+  const px = _tx2.getImageData(0, 0, W, H).data;
+  const cW = W / TC, cH = H / TR;
+  const SR = 10; // Suchradius in Grid-Zellen
+  for (let r = 0; r < TR; r++) {
+    for (let c = 0; c < TC; c++) {
+      const cx = ((c + .5) * cW) | 0, cy = ((r + .5) * cH) | 0;
+      if (px[(cy * W + cx) * 4] > 128) {
+        textFieldTX[r*TC+c] = 0; textFieldTY[r*TC+c] = 0;
+      } else {
+        let bD = 1e9, bX = 0, bY = 0;
+        for (let dr = -SR; dr <= SR; dr++) {
+          for (let dc = -SR; dc <= SR; dc++) {
+            if (!dr && !dc) continue;
+            const nc = c+dc, nr = r+dr;
+            if (nc<0||nc>=TC||nr<0||nr>=TR) continue;
+            const scx = ((nc+.5)*cW)|0, scy = ((nr+.5)*cH)|0;
+            if (px[(scy*W+scx)*4] > 128) {
+              const d2 = dc*dc + dr*dr;
+              if (d2 < bD) { bD=d2; const d=Math.sqrt(d2); bX=dc/d; bY=dr/d; }
+            }
+          }
+        }
+        textFieldTX[r*TC+c] = bD<1e9 ? bX : 0;
+        textFieldTY[r*TC+c] = bD<1e9 ? bY : 0;
+      }
+    }
+  }
+  _textActive = true;
+}
+
+function markTextDirty() { _textDirty = true; }
+const PAL_A=new Float32Array(N_TOTAL*4); // HSL+A for current step
+const PAL_B=new Float32Array(N_TOTAL*4); // HSL+A for next step
+const colAnim={idx:0,phase:'hold',startTime:0};
+
+function _parseHSLA(str){
+  const m=str.match(/hsla\(([\d.]+),([\d.]+)%,([\d.]+)%,([\d.]+)\)/);
+  return m?[+m[1],+m[2],+m[3],+m[4]]:[210,80,50,0.1];
+}
+
+// Build an HSL typed-array palette from a step definition (temporarily swaps custom state)
+function buildPaletteHSL(step, target){
+  const ss=S.customStops,sc=S.customSat;
+  if(step.customStops){S.customStops=step.customStops;S.customSat=step.customSat??80;}
+  for(let h=0;h<N_HUE;h++){
+    const t=(h+.5)/N_HUE;
+    for(let b=0;b<N_BRT;b++){
+      const p=_parseHSLA(schemeColor(t,step.scheme,S.alpha,b===1)),j=(h*N_BRT+b)*4;
+      target[j]=p[0];target[j+1]=p[1];target[j+2]=p[2];target[j+3]=p[3];
+    }
+  }
+  S.customStops=ss;S.customSat=sc;
+}
+
+// Write blended HSLA strings into PALETTE[] AND PALETTE_RGBA for WebGL
+function blendPaletteHSL(a,b,t){
+  for(let i=0;i<N_TOTAL;i++){
+    const j=i*4;
+    const h0=a[j],s0=a[j+1],l0=a[j+2],a0=a[j+3];
+    const h1=b[j],s1=b[j+1],l1=b[j+2],a1=b[j+3];
+    let dh=h1-h0;if(dh>180)dh-=360;if(dh<-180)dh+=360;
+    const h=((h0+dh*t+360)%360)|0;
+    const s=(s0+(s1-s0)*t)|0;
+    const l=(l0+(l1-l0)*t)|0;
+    const al=a0+(a1-a0)*t;
+    PALETTE[i]=`hsla(${h},${s}%,${l}%,${al.toFixed(3)})`;
+    const [r,g,b2]=hslToRgbf(h,s,l);
+    PALETTE_RGBA[j]=r;PALETTE_RGBA[j+1]=g;PALETTE_RGBA[j+2]=b2;PALETTE_RGBA[j+3]=al;
+  }
+}
+
+const _cpEl={prog:null,phase:null,next:null}; // cached DOM refs, filled after DOM ready
+function tickColorAnim(now,doUI){
+  if(!S.colorAnimOn||S.colorAnimList.length<2){_inColorTrans=false;return;}
+  const elapsed=(now-colAnim.startTime)/1000;
+
+  if(colAnim.phase==='hold'){
+    _inColorTrans=false;
+    if(elapsed>=S.colorAnimHold){
+      // Kick off transition: snapshot A (current) and B (next)
+      buildPaletteHSL(S.colorAnimList[colAnim.idx],PAL_A);
+      buildPaletteHSL(S.colorAnimList[(colAnim.idx+1)%S.colorAnimList.length],PAL_B);
+      colAnim.phase='transition'; colAnim.startTime=now;
+      _inColorTrans=true;
+    } else if(doUI){
+      const pct=Math.min(elapsed/S.colorAnimHold*100,100).toFixed(0);
+      if(_cpEl.prog) _cpEl.prog.style.width=pct+'%';
+      if(_cpEl.prog) _cpEl.prog.style.background='rgba(255,255,255,0.15)';
+      if(_cpEl.phase) _cpEl.phase.textContent='Warte auf Übergang';
+      if(_cpEl.next) _cpEl.next.textContent=(S.colorAnimHold-elapsed).toFixed(1)+' s';
+    }
+  } else {
+    // Transition phase
+    _inColorTrans=true;
+    const t=Math.min(elapsed/S.colorAnimTrans,1);
+    blendPaletteHSL(PAL_A,PAL_B,t);
+    if(doUI){
+      if(_cpEl.prog){_cpEl.prog.style.width=(t*100).toFixed(0)+'%';_cpEl.prog.style.background='rgba(59,130,246,.7)';}
+      if(_cpEl.phase) _cpEl.phase.textContent='Übergang läuft';
+      if(_cpEl.next) _cpEl.next.textContent=((1-t)*S.colorAnimTrans).toFixed(1)+' s';
+    }
+    if(t>=1){
+      // Transition done — advance to next step
+      colAnim.idx=(colAnim.idx+1)%S.colorAnimList.length;
+      colAnim.phase='hold'; colAnim.startTime=now; _inColorTrans=false;
+      const step=S.colorAnimList[colAnim.idx];
+      S.scheme=step.scheme;
+      if(step.customStops){S.customStops=step.customStops.map(s=>({...s}));S.customSat=step.customSat??80;}
+      buildPalette();
+      if(doUI){
+        document.querySelectorAll('.sc-btn').forEach(b=>b.classList.toggle('active',b.dataset.scheme===S.scheme));
+        if(typeof renderColorAnimList==='function') renderColorAnimList();
+        if(typeof updateCustomPreview==='function'&&S.scheme==='custom') updateCustomPreview();
+      }
+    }
+  }
+}
+
+// ─── Buffers ───────────────────────────────────────────────────────────
+const MAX=200000; // erhöht für WebGL (kein Speicher-/Performance-Nachteil mehr)
+// Canvas 2D Fallback: Bucket-Buffer
+const bX1=Array.from({length:N_TOTAL},()=>new Float32Array(MAX));
+const bY1=Array.from({length:N_TOTAL},()=>new Float32Array(MAX));
+const bX2=Array.from({length:N_TOTAL},()=>new Float32Array(MAX));
+const bY2=Array.from({length:N_TOTAL},()=>new Float32Array(MAX));
+const bLen=new Int32Array(N_TOTAL);
+
+// ─── Particle Arrays ───────────────────────────────────────────────────
+const pX=new Float32Array(MAX),pY=new Float32Array(MAX);
+const pPX=new Float32Array(MAX),pPY=new Float32Array(MAX);
+const pVX=new Float32Array(MAX),pVY=new Float32Array(MAX);
+const pAge=new Float32Array(MAX),pMaxA=new Float32Array(MAX);
+const pSeed=new Float32Array(MAX),pBkt=new Uint8Array(MAX);
+
+function spawnParticle(i,randomAge){
+  pX[i]=pPX[i]=Math.random()*W; pY[i]=pPY[i]=Math.random()*H;
+  pVX[i]=(Math.random()-.5)*.3; pVY[i]=(Math.random()-.5)*.3;
+  pMaxA[i]=S.life*(.5+Math.random()); pAge[i]=randomAge?Math.random()*pMaxA[i]:0;
+}
+for(let i=0;i<MAX;i++){pSeed[i]=Math.random();pBkt[i]=Math.floor(pSeed[i]*N_HUE)|0;spawnParticle(i,true);}
+buildPalette();
+
+// ─── Input ─────────────────────────────────────────────────────────────
+const input={x:0,y:0,attract:false,repel:false};
+canvas.addEventListener('mousemove',e=>{input.x=e.clientX*_dpr;input.y=e.clientY*_dpr;});
+canvas.addEventListener('mousedown',e=>{if(e.button===0)input.attract=true;if(e.button===2)input.repel=true;});
+canvas.addEventListener('mouseup',e=>{if(e.button===0)input.attract=false;if(e.button===2)input.repel=false;});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('mouseleave',()=>{input.attract=false;input.repel=false;});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];input.x=t.clientX*_dpr;input.y=t.clientY*_dpr;input.attract=true;},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];input.x=t.clientX*_dpr;input.y=t.clientY*_dpr;},{passive:false});
+canvas.addEventListener('touchend',()=>{input.attract=false;});
+
+// ─── Auto-Click ────────────────────────────────────────────────────────
+const autoClick={active:false,x:0,y:0,startTime:0,endTime:0};
+let autoNextTime=0;
+const _autoBar=document.getElementById('auto-bar'),_autoStatus=document.getElementById('auto-status'),_autoNext=document.getElementById('auto-next');
+
+// ─── FPS ───────────────────────────────────────────────────────────────
+let _fps=60,_lastT=performance.now(),_fpsTimer=0;
+const elFps=document.getElementById('v-fps'),elDraws=document.getElementById('v-draws');
+function updatePerfDisplay(ab){const f=_fps|0;elFps.textContent=`${f} fps`;elFps.className=`fps-badge${f<30?' bad':f<50?' warn':''}`;elDraws.textContent=`${ab} Draw Calls / Frame`;}
+
+// ─── Generic Animation Tick ────────────────────────────────────────────
+// pauseKey-Einträge folgen dem Zyklus: [Pause bei Min] → [Min→Max→Min] → repeat
+function tickAnimations(now, doUI) {
+  for (const ap of ANIM_CFG) {
+    if (!S[ap.onKey]) continue;
+    const tSec = now / 1000;
+    let displayPhase, inPause = false;
+
+    if (ap.pauseKey) {
+      // ── Pause-Zyklus: pause → min→max→min → pause → …
+      const animDur  = S[ap.durKey];
+      const pauseDur = S[ap.pauseKey];
+      const totalDur = pauseDur + animDur;
+      const cyclePos = tSec % totalDur;       // Position im Zyklus (0…totalDur)
+      displayPhase   = cyclePos / totalDur;   // 0…1 für Fortschrittsbalken
+
+      if (cyclePos < pauseDur) {
+        S[ap.key] = S[ap.minKey];             // Pause: halte bei Min
+        inPause   = true;
+      } else {
+        const animPos = (cyclePos - pauseDur) / animDur; // 0…1 innerhalb Anim
+        const cos = Math.cos(animPos * Math.PI * 2);
+        S[ap.key] = S[ap.minKey] + (S[ap.maxKey] - S[ap.minKey]) * (1 - cos) * .5;
+      }
+    } else {
+      // ── Normales Sinus-Pendel (alle anderen Parameter)
+      const phase = (tSec % S[ap.durKey]) / S[ap.durKey];
+      const cos   = Math.cos(phase * Math.PI * 2);
+      S[ap.key]   = S[ap.minKey] + (S[ap.maxKey] - S[ap.minKey]) * (1 - cos) * .5;
+      displayPhase = phase;
+    }
+
+    if (ap.onChange) ap.onChange();
+    if (doUI) {
+      const sl=document.getElementById(ap.sid), vl=document.getElementById(ap.vid);
+      if(sl) sl.value = S[ap.key];
+      if(vl) vl.textContent = fmtFn(ap.fmt)(S[ap.key]);
+      const bar=document.getElementById('apb-'+ap.key);
+      if(bar){
+        bar.style.width = (displayPhase*100).toFixed(1)+'%';
+        // Farbe: grau während Pause, blau während Animation
+        if(ap.pauseKey) bar.style.background = inPause
+          ? 'rgba(255,255,255,0.12)' : 'rgba(59,130,246,.6)';
+      }
+      const cur=document.getElementById('apc-'+ap.key);
+      if(cur) cur.textContent = (ap.pauseKey && inPause)
+        ? '— Pause' : '→ '+fmtFn(ap.fmt)(S[ap.key]);
+    }
+  }
+}
+function fmtFn(name){
+  if(name==='f1') return n=>n.toFixed(1);
+  if(name==='f2') return n=>n.toFixed(2);
+  if(name==='f3') return n=>n.toFixed(3);
+  return n=>Math.round(n).toLocaleString('de-DE');
+}
+
+// ─── Main Loop ─────────────────────────────────────────────────────────
+const SLIMIT=11,SLIM2=SLIMIT*SLIMIT;
+let time=0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const now=performance.now();
+  _fps=_fps*.92+(1000/(now-_lastT))*.08; _lastT=now;
+  const doUI=_fpsTimer===0;
+
+  tickAnimations(now, doUI);
+  tickColorAnim(now, doUI);
+
+  // Auto-Click timing
+  if(S.autoClick){
+    if(!autoClick.active&&now>=autoNextTime){autoClick.active=true;autoClick.x=W*.12+Math.random()*W*.76;autoClick.y=H*.12+Math.random()*H*.76;autoClick.startTime=now;autoClick.endTime=now+S.autoDuration*1000;autoNextTime=now+S.autoInterval*1000;}
+    if(autoClick.active&&now>autoClick.endTime) autoClick.active=false;
+    if(doUI){if(autoClick.active){const prog=(now-autoClick.startTime)/(S.autoDuration*1000);_autoBar.style.width=(prog*100).toFixed(1)+'%';_autoStatus.textContent='Klick aktiv';_autoNext.textContent='';}else{const wait=Math.max(0,autoNextTime-now)/1000;_autoBar.style.width=((1-wait/S.autoInterval)*100).toFixed(1)+'%';_autoStatus.textContent='Nächster in';_autoNext.textContent=wait.toFixed(1)+' s';}}
+  }
+
+  // ── Trail-Fade + Render-Setup ────────────────────────────────────────
+  if (gl) {
+    // WebGL: Vollbild-Quad mit BG-Farbe bei trail-Alpha → blendet alte Partikel aus
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindBuffer(gl.ARRAY_BUFFER, _glQuadVbo);
+    gl.vertexAttribPointer(_aPos, 2, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(_aCol, 4, gl.FLOAT, false, 24, 8);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    // Zurück auf Partikel-VBO, Blend-Modus für Partikel setzen
+    gl.bindBuffer(gl.ARRAY_BUFFER, _glVbo);
+    gl.vertexAttribPointer(_aPos, 2, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(_aCol, 4, gl.FLOAT, false, 24, 8);
+    if (S.additive) gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additiv
+    _vboCount = 0;
+  } else {
+    // Canvas 2D Fallback
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = trailStyle;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = S.additive ? 'lighter' : 'source-over';
+    ctx.lineWidth = S.lw; ctx.lineCap = 'butt';
+  }
+
+  time++;
+  if(time%3===0) updateField(time);
+
+  const mx=input.x,my=input.y,doAtt=input.attract,doRep=input.repel,hasForce=doAtt||doRep;
+  const COUNT=S.count,damp=S.damp,spdScale=S.speed*.8,grav=S.gravity,cDrive=S.colorDrive;
+  const autoOn=S.autoClick&&autoClick.active,autoGr=S.autoGravity,autoAX=autoClick.x,autoAY=autoClick.y;
+  // Text gravity: rebuild field if dirty, then cache lookup scale
+  if (_textDirty) { buildTextField(); _textDirty = false; }
+  const textOn = _textActive && S.textGravStr > 0;
+  const textGS = S.textGravStr * 0.001; // scale: slider 200 → force 0.2 px/frame²
+
+  // ── Gestaffelte Physik (K=2) ────────────────────────────────────────────
+  // Jede zweite Frame-Hälfte der Partikel updaten, alternierend.
+  // Auf glatten Curl-Noise-Feldern unsichtbar weil:
+  //  • Typische Geschwindigkeiten (1-5 px/frame) → 1-Frame-Freeze unter Wahrnehmungsgrenze
+  //  • Trail-Fade (94%/Frame) blendet eingefrorene Linie natürlich aus
+  //  • 100k Partikeldichte macht Einzelpartikel-Artefakte unsichtbar
+  const half = COUNT >> 1;           // COUNT/2, Integer-Division via Bit-Shift
+  const phyS = (time & 1) * half;   // 0 oder half, wechselt jeden Frame
+  const phyE = phyS + half;
+
+  for(let b=0;b<N_TOTAL;b++) bLen[b]=0; // Canvas 2D Fallback Reset (kein Overhead bei WebGL)
+
+  for(let i=0;i<COUNT;i++){
+
+    if(i >= phyS && i < phyE){
+      // ── Physik (nur aktuelle Batch-Hälfte) ────────────────────────────
+      pPX[i]=pX[i]; pPY[i]=pY[i];
+      sampleFieldInto(pX[i],pY[i]);
+      pVX[i]+=_fx*spdScale; pVY[i]+=_fy*spdScale;
+
+      if(hasForce){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=grav/(d2+500),s=doAtt?1:-1;pVX[i]+=(dx/d)*mag*s;pVY[i]+=(dy/d)*mag*s;}}
+      if(autoOn){const dx=autoAX-pX[i],dy=autoAY-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=autoGr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
+
+      if(textOn){
+        const fc=Math.max(0,Math.min((pX[i]/W)*(TC-1),TC-1.001));
+        const fr=Math.max(0,Math.min((pY[i]/H)*(TR-1),TR-1.001));
+        const c0=fc|0,c1=Math.min(c0+1,TC-1),r0=fr|0,r1=Math.min(r0+1,TR-1);
+        const tc=fc-c0,tr=fr-r0;
+        const i00=r0*TC+c0,i10=r0*TC+c1,i01=r1*TC+c0,i11=r1*TC+c1;
+        const tfx=(1-tr)*((1-tc)*textFieldTX[i00]+tc*textFieldTX[i10])+tr*((1-tc)*textFieldTX[i01]+tc*textFieldTX[i11]);
+        const tfy=(1-tr)*((1-tc)*textFieldTY[i00]+tc*textFieldTY[i10])+tr*((1-tc)*textFieldTY[i01]+tc*textFieldTY[i11]);
+        pVX[i]+=tfx*textGS; pVY[i]+=tfy*textGS;
+      }
+
+      pVX[i]*=damp; pVY[i]*=damp;
+      const v2c=pVX[i]*pVX[i]+pVY[i]*pVY[i];
+      if(v2c>SLIM2){const inv=SLIMIT/Math.sqrt(v2c);pVX[i]*=inv;pVY[i]*=inv;}
+
+      pX[i]+=pVX[i]; pY[i]+=pVY[i]; pAge[i]++;
+      if(pAge[i]>pMaxA[i]||pX[i]<-40||pX[i]>W+40||pY[i]<-40||pY[i]>H+40){spawnParticle(i,false);continue;}
+    }
+
+    // ── Rendering (alle Partikel, jeden Frame) ─────────────────────────
+    const ddx=pX[i]-pPX[i],ddy=pY[i]-pPY[i];
+    if(ddx*ddx+ddy*ddy<.02) continue;
+    const prog=pAge[i]/pMaxA[i];
+    if(prog<.02||prog>.98) continue;
+
+    // v2 frisch aus pVX/pVY — korrekt für Physik- und Nicht-Physik-Frames
+    const v2=pVX[i]*pVX[i]+pVY[i]*pVY[i];
+    const brt=(v2>SLIM2*.2)?1:0;
+    let hBkt;
+    switch(cDrive){
+      case 'velocity': hBkt=Math.min(Math.sqrt(v2)/SLIMIT*N_HUE|0,N_HUE-1);break;
+      case 'posX':     hBkt=Math.max(0,Math.min(pX[i]/W*N_HUE|0,N_HUE-1));break;
+      case 'posY':     hBkt=Math.max(0,Math.min(pY[i]/H*N_HUE|0,N_HUE-1));break;
+      case 'age':      hBkt=Math.min(pAge[i]/pMaxA[i]*N_HUE|0,N_HUE-1);break;
+      case 'mixed':    hBkt=(pBkt[i]+(Math.sqrt(v2)/SLIMIT*(N_HUE>>1)|0))%N_HUE;break;
+      default:         hBkt=pBkt[i];
+    }
+    const bIdx=hBkt*N_BRT+brt;
+    if (gl) {
+      // ── WebGL: Interleaved VBO [x,y,r,g,b,a, x,y,r,g,b,a] ──────────
+      const pr=PALETTE_RGBA[bIdx*4],pg=PALETTE_RGBA[bIdx*4+1],pb=PALETTE_RGBA[bIdx*4+2],pa=PALETTE_RGBA[bIdx*4+3];
+      const base=_vboCount*12;
+      _vboData[base]=pPX[i];_vboData[base+1]=pPY[i];_vboData[base+2]=pr;_vboData[base+3]=pg;_vboData[base+4]=pb;_vboData[base+5]=pa;
+      _vboData[base+6]=pX[i]; _vboData[base+7]=pY[i]; _vboData[base+8]=pr;_vboData[base+9]=pg;_vboData[base+10]=pb;_vboData[base+11]=pa;
+      _vboCount++;
+    } else {
+      // ── Canvas 2D Fallback: Bucket-Buffer ────────────────────────────
+      const j=bLen[bIdx]++;
+      bX1[bIdx][j]=pPX[i];bY1[bIdx][j]=pPY[i];bX2[bIdx][j]=pX[i];bY2[bIdx][j]=pY[i];
+    }
+  }
+
+  // ── Draw ─────────────────────────────────────────────────────────────
+  if (gl) {
+    // WebGL: EIN einziger GPU Draw Call für alle Partikel
+    if (_vboCount > 0) {
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, _vboData, 0, _vboCount * 12);
+      gl.drawArrays(gl.LINES, 0, _vboCount * 2);
+    }
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); // Blend zurücksetzen
+    if(++_fpsTimer>45){
+      const f=_fps|0;
+      elFps.textContent=`${f} fps`;
+      elFps.className=`fps-badge${f<30?' bad':f<50?' warn':''}`;
+      elDraws.textContent=`${_vboCount.toLocaleString('de-DE')} Linien · 1 Draw Call (WebGL)`;
+      _fpsTimer=0;
+    }
+  } else {
+    // Canvas 2D Fallback: Bucket-basiertes Batch-Rendering
+    let ab=0;
+    for(let b=0;b<N_TOTAL;b++){const len=bLen[b];if(!len)continue;ab++;ctx.beginPath();const x1a=bX1[b],y1a=bY1[b],x2a=bX2[b],y2a=bY2[b];for(let j=0;j<len;j++){ctx.moveTo(x1a[j],y1a[j]);ctx.lineTo(x2a[j],y2a[j]);}ctx.strokeStyle=PALETTE[b];ctx.stroke();}
+    ctx.globalCompositeOperation='source-over';
+    if(++_fpsTimer>45){updatePerfDisplay(ab);_fpsTimer=0;}
+  }
+}
+
+// ─── WebGL Init ────────────────────────────────────────────────────────
+function initWebGL() {
+  gl = canvas.getContext('webgl', {preserveDrawingBuffer:true, alpha:false, premultipliedAlpha:false, antialias:false});
+  if (!gl) { ctx = canvas.getContext('2d'); console.warn('WebGL nicht verfügbar, Canvas 2D Fallback.'); return; }
+
+  _vboData = new Float32Array(MAX * 12); // [x,y,r,g,b,a] × 2 Vertices × MAX Partikel
+
+  // ── Shader Program ──────────────────────────────────────────────────
+  const vs = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vs, `attribute vec2 a_pos;attribute vec4 a_col;uniform vec2 u_res;varying vec4 v_col;void main(){vec2 c=(a_pos/u_res)*2.0-1.0;gl_Position=vec4(c.x,-c.y,0,1);v_col=a_col;}`);
+  gl.compileShader(vs);
+
+  const fs = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fs, `precision mediump float;varying vec4 v_col;void main(){gl_FragColor=v_col;}`);
+  gl.compileShader(fs);
+
+  _glProg = gl.createProgram();
+  gl.attachShader(_glProg, vs); gl.attachShader(_glProg, fs);
+  gl.linkProgram(_glProg); gl.useProgram(_glProg);
+
+  _aPos = gl.getAttribLocation(_glProg, 'a_pos');
+  _aCol = gl.getAttribLocation(_glProg, 'a_col');
+  _uRes = gl.getUniformLocation(_glProg, 'u_res');
+
+  // ── Particle VBO ────────────────────────────────────────────────────
+  // Interleaved layout: [pos_x, pos_y, r, g, b, a]  — stride = 24 bytes
+  _glVbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, _glVbo);
+  gl.bufferData(gl.ARRAY_BUFFER, _vboData.byteLength, gl.DYNAMIC_DRAW);
+  const STRIDE = 6 * 4; // 6 floats × 4 bytes
+  gl.enableVertexAttribArray(_aPos); gl.vertexAttribPointer(_aPos, 2, gl.FLOAT, false, STRIDE, 0);
+  gl.enableVertexAttribArray(_aCol); gl.vertexAttribPointer(_aCol, 4, gl.FLOAT, false, STRIDE, 8);
+
+  // ── Quad VBO (Vollbild-Quad für Trail-Fade) ─────────────────────────
+  _glQuadVbo = gl.createBuffer();
+  // Inhalt wird von _updateQuadVbo() befüllt (nach W/H bekannt)
+
+  gl.enable(gl.BLEND);
+  gl.clearColor(BG_R, BG_G, BG_B, 1);
+}
+
+// ─── Startup ───────────────────────────────────────────────────────────
+initWebGL(); resize(); window.addEventListener('resize',resize); updateField(0); animate();
+setTimeout(()=>{document.getElementById('hint').style.opacity='0';},5000);
+
+// ═══════════════════════════════════════════════════════════════════════
+//  UI
+// ═══════════════════════════════════════════════════════════════════════
+
+const panel=document.getElementById('panel');
+document.getElementById('btn-settings').addEventListener('click',e=>{e.stopPropagation();panel.classList.add('open');});
+document.getElementById('btn-close').addEventListener('click',()=>panel.classList.remove('open'));
+document.addEventListener('click',e=>{if(!panel.contains(e.target)&&e.target.id!=='btn-settings')panel.classList.remove('open');});
+panel.addEventListener('click',e=>e.stopPropagation());
+
+// Format helpers
+const f1=n=>n.toFixed(1),f2=n=>n.toFixed(2),f3=n=>n.toFixed(3);
+const fi=n=>Math.round(n).toLocaleString('de-DE');
+
+// Editable value click handler
+function makeValueEditable(valEl,sliderEl,key,fmt,onChangeFn){
+  valEl.title='Klicken zum Bearbeiten';
+  valEl.addEventListener('click',e=>{
+    e.stopPropagation();
+    if(key==='turb'&&S.turbAnim){S.turbAnim=false;syncAnimToggle('turb',false);}
+    if(key==='speed'&&S.speedAnim){S.speedAnim=false;syncAnimToggle('speed',false);}
+    if(key==='alpha'&&S.alphaAnim){S.alphaAnim=false;syncAnimToggle('alpha',false);}
+    if(key==='trail'&&S.trailAnim){S.trailAnim=false;syncAnimToggle('trail',false);}
+    if(key==='tscale'&&S.tscaleAnim){S.tscaleAnim=false;syncAnimToggle('tscale',false);}
+    const inp=document.createElement('input');
+    inp.type='number';inp.value=S[key];inp.className='ctrl-val-inp';
+    if(sliderEl)inp.step=sliderEl.step;
+    valEl.textContent='';valEl.appendChild(inp);inp.focus();inp.select();
+    let done=false;
+    function commit(){if(done)return;done=true;const v=parseFloat(inp.value);if(!isNaN(v)){S[key]=v;if(sliderEl){const lo=parseFloat(sliderEl.min),hi=parseFloat(sliderEl.max);sliderEl.value=Math.max(lo,Math.min(hi,v));}if(onChangeFn)onChangeFn();}valEl.textContent=fmt(S[key]);}
+    inp.addEventListener('blur',commit);
+    inp.addEventListener('keydown',ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){done=true;valEl.textContent=fmt(S[key]);}});
+  });
+}
+
+function bindSlider(sid,vid,key,fmt,onChange){
+  const sl=document.getElementById(sid),vl=document.getElementById(vid);
+  sl.addEventListener('input',()=>{S[key]=parseFloat(sl.value);vl.textContent=fmt(S[key]);if(onChange)onChange();});
+  makeValueEditable(vl,sl,key,fmt,onChange);
+}
+
+// Main sliders
+bindSlider('s-count','v-count','count',fi);
+bindSlider('s-life','v-life','life',n=>Math.round(n));
+bindSlider('s-alpha','v-alpha','alpha',f3,()=>buildPalette());
+bindSlider('s-lw','v-lw','lw',f1);
+bindSlider('s-speed','v-speed','speed',f2);
+bindSlider('s-turb','v-turb','turb',f1,()=>{if(!S.turbAnim)clearCanvas();});
+bindSlider('s-tscale','v-tscale','tscale',f1);
+bindSlider('s-damp','v-damp','damp',f2);
+bindSlider('s-trail','v-trail','trail',f2,()=>rebuildTrail());
+bindSlider('s-grav','v-grav','gravity',fi);
+
+// ── Generic Animation UI Binding ────────────────────────────────────────
+function syncAnimToggle(key, on) {
+  document.getElementById('t-anim-'+key).classList.toggle('on', on);
+  const inner=document.getElementById('ain-'+key);
+  inner.style.display=on?'block':'none';
+}
+
+for (const ap of ANIM_CFG) {
+  const k = ap.key;
+  // Toggle
+  document.getElementById('t-anim-'+k).addEventListener('click', function() {
+    S[ap.onKey] = !S[ap.onKey];
+    syncAnimToggle(k, S[ap.onKey]);
+    if (!S[ap.onKey]) {
+      S[k] = parseFloat(document.getElementById(ap.sid).value);
+    }
+  });
+  // Min/Max/Dur sliders — bind generically
+  const fmt = fmtFn(ap.fmt);
+  const minsid='s-amin-'+k, maxsid='s-amax-'+k, dursid='s-adur-'+k;
+  const minvid='v-amin-'+k, maxvid='v-amax-'+k, durvid='v-adur-'+k;
+  const aplid='apl-'+k, aprid='apr-'+k;
+  [
+    [minsid, minvid, ap.minKey, fmt, ()=>{document.getElementById(aplid).textContent=fmt(S[ap.minKey]);}],
+    [maxsid, maxvid, ap.maxKey, fmt, ()=>{document.getElementById(aprid).textContent=fmt(S[ap.maxKey]);}],
+    [dursid, durvid, ap.durKey, n=>Math.round(n)+' s', null],
+  ].forEach(([sid,vid,skey,sfmt,cb])=>{
+    const sl=document.getElementById(sid), vl=document.getElementById(vid);
+    if(!sl||!vl) return;
+    sl.addEventListener('input',()=>{S[skey]=parseFloat(sl.value);vl.textContent=sfmt(S[skey]);if(cb)cb();});
+    makeValueEditable(vl,sl,skey,sfmt,cb);
+  });
+
+  // Pause-Slider (nur wenn pauseKey definiert)
+  if (ap.pauseKey) {
+    const psid='s-apause-'+k, pvid='v-apause-'+k;
+    const psl=document.getElementById(psid), pvl=document.getElementById(pvid);
+    if(psl && pvl) {
+      psl.addEventListener('input',()=>{S[ap.pauseKey]=parseFloat(psl.value);pvl.textContent=S[ap.pauseKey].toFixed(1)+' s';});
+      makeValueEditable(pvl,psl,ap.pauseKey,n=>n.toFixed(1)+' s',null);
+    }
+  }
+}
+
+// ── Additive toggle ──────────────────────────────────────────────────────
+const togAdd=document.getElementById('t-add');
+togAdd.addEventListener('click',()=>{S.additive=!S.additive;togAdd.classList.toggle('on',S.additive);clearCanvas();});
+
+// ── Colour schemes ───────────────────────────────────────────────────────
+document.querySelectorAll('.sc-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.sc-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); S.scheme=btn.dataset.scheme;
+    buildPalette(); clearCanvas();
+    document.getElementById('custom-editor').style.display=S.scheme==='custom'?'block':'none';
+  });
+});
+
+// ── Drive pills ──────────────────────────────────────────────────────────
+document.querySelectorAll('.drive-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.drive-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); S.colorDrive=btn.dataset.drive;
+  });
+});
+
+// ── Custom gradient editor ───────────────────────────────────────────────
+function updateCustomPreview(){
+  const stops=S.customStops,n=stops.length;
+  let bg;
+  if(n<2) bg=`hsl(${stops[0]?.h??210},${S.customSat}%,50%)`;
+  else{ const parts=stops.map((s,i)=>`hsl(${s.h},${S.customSat}%,50%) ${(i/(n-1)*100).toFixed(0)}%`);bg=`linear-gradient(90deg,${parts.join(',')})`; }
+  document.getElementById('custom-preview').style.background=bg;
+  const sw=document.getElementById('custom-scheme-sw');if(sw)sw.style.background=bg;
+}
+
+function renderCustomStops(){
+  const container=document.getElementById('custom-stops');
+  container.innerHTML='';
+  S.customStops.forEach((stop,idx)=>{
+    const canDel=S.customStops.length>2;
+    const row=document.createElement('div');
+    row.className='cstop-row';
+    row.innerHTML=`<div class="cstop-swatch" style="background:hsl(${stop.h},${S.customSat}%,50%)"></div><input type="range" class="cstop-hue" min="0" max="360" step="1" value="${stop.h}"><span class="cstop-val">${stop.h}°</span>${canDel?`<button class="cstop-del">×</button>`:'<span style="width:19px"></span>'}`;
+    const sl=row.querySelector('.cstop-hue'),val=row.querySelector('.cstop-val'),sw2=row.querySelector('.cstop-swatch');
+    sl.addEventListener('input',()=>{stop.h=parseInt(sl.value);val.textContent=sl.value+'°';sw2.style.background=`hsl(${sl.value},${S.customSat}%,50%)`;buildPalette();updateCustomPreview();});
+    if(canDel) row.querySelector('.cstop-del').addEventListener('click',()=>{S.customStops.splice(idx,1);renderCustomStops();buildPalette();updateCustomPreview();});
+    container.appendChild(row);
+  });
+  updateCustomPreview();
+}
+document.getElementById('btn-add-stop').addEventListener('click',()=>{S.customStops.push({h:(S.customStops[S.customStops.length-1].h+60)%360});renderCustomStops();buildPalette();updateCustomPreview();});
+const slCsat=document.getElementById('s-csat'),vlCsat=document.getElementById('v-csat');
+slCsat.addEventListener('input',()=>{S.customSat=parseInt(slCsat.value);vlCsat.textContent=S.customSat;buildPalette();updateCustomPreview();renderCustomStops();});
+makeValueEditable(vlCsat,slCsat,'customSat',n=>Math.round(n),()=>{buildPalette();updateCustomPreview();renderCustomStops();});
+renderCustomStops();
+// Show/hide custom editor based on initial scheme
+document.getElementById('custom-editor').style.display=S.scheme==='custom'?'block':'none';
+
+// ── Auto-Klick ────────────────────────────────────────────────────────────
+const autoControlsEl=document.getElementById('auto-controls');
+const togAuto=document.getElementById('t-auto');
+togAuto.addEventListener('click',()=>{
+  S.autoClick=!S.autoClick;togAuto.classList.toggle('on',S.autoClick);
+  if(S.autoClick){autoNextTime=performance.now()+S.autoInterval*1000;_autoStatus.textContent='Nächster in';}
+  else{autoClick.active=false;_autoBar.style.width='0%';_autoStatus.textContent='Warte';_autoNext.textContent='–';}
+});
+bindSlider('s-autoint','v-autoint','autoInterval',n=>n.toFixed(1)+' s');
+bindSlider('s-autodur','v-autodur','autoDuration',n=>n.toFixed(1)+' s');
+const slAutoGrav=document.getElementById('s-autograv'),vlAutoGrav=document.getElementById('v-autograv');
+slAutoGrav.addEventListener('input',()=>{const raw=parseInt(slAutoGrav.value);S.autoGravity=raw*raw;vlAutoGrav.textContent=fi(S.autoGravity);});
+makeValueEditable(vlAutoGrav,null,'autoGravity',fi,()=>{slAutoGrav.value=Math.round(Math.sqrt(Math.max(0,S.autoGravity)));});
+// Init auto-grav slider
+slAutoGrav.value=Math.round(Math.sqrt(S.autoGravity));
+
+// ── Colour Animation UI ──────────────────────────────────────────────────
+// Cache DOM refs for the progress bar (called from tickColorAnim which runs before DOM ready guard)
+window.addEventListener('DOMContentLoaded',()=>{},false); // ensure refs available
+_cpEl.prog  = document.getElementById('color-anim-prog');
+_cpEl.phase = document.getElementById('color-anim-phase');
+_cpEl.next  = document.getElementById('color-anim-next');
+
+const SCHEME_LABELS={blue:'Blau',dual:'Gold+Blau',indigo:'Indigo',ember:'Ember',rainbow:'Regenbogen',aurora:'Polarlicht',neon:'Neon',sunset:'Sonnenunt.',ocean:'Ozean',custom:'Eigener'};
+
+function getStepPreview(step){
+  const ss=S.customStops,sc=S.customSat;
+  if(step.customStops){S.customStops=step.customStops;S.customSat=step.customSat??80;}
+  const pts=[0.08,0.3,0.55,0.78,0.95].map(t=>{const c=schemeColor(t,step.scheme,1,true);return c.replace(/,([\d.]+)\)$/,',1)');});
+  if(step.customStops){S.customStops=ss;S.customSat=sc;}
+  return `linear-gradient(90deg,${pts.join(',')})`;
+}
+
+function renderColorAnimList(){
+  const container=document.getElementById('color-step-list');
+  if(!container) return;
+  container.innerHTML='';
+  S.colorAnimList.forEach((step,idx)=>{
+    const div=document.createElement('div');
+    div.className='col-step'+(idx===colAnim.idx&&S.colorAnimOn?' step-active':'');
+    const canDel=S.colorAnimList.length>2;
+    div.innerHTML=`
+      <div class="col-step-dot"></div>
+      <div class="col-step-swatch" style="background:${getStepPreview(step)}"></div>
+      <span class="col-step-label">${SCHEME_LABELS[step.scheme]||step.scheme}</span>
+      ${canDel?`<button class="col-step-del" title="Entfernen">×</button>`:''}
+    `;
+    if(canDel){
+      div.querySelector('.col-step-del').addEventListener('click',()=>{
+        S.colorAnimList.splice(idx,1);
+        if(colAnim.idx>=S.colorAnimList.length) colAnim.idx=0;
+        renderColorAnimList();
+      });
+    }
+    container.appendChild(div);
+  });
+}
+
+const togColorAnim=document.getElementById('t-color-anim');
+const colorAnimBody=document.getElementById('color-anim-body');
+togColorAnim.addEventListener('click',()=>{
+  S.colorAnimOn=!S.colorAnimOn;
+  togColorAnim.classList.toggle('on',S.colorAnimOn);
+  colorAnimBody.style.display=S.colorAnimOn?'block':'none';
+  if(S.colorAnimOn){
+    colAnim.idx=0; colAnim.phase='hold'; colAnim.startTime=performance.now();
+    renderColorAnimList();
+  } else {
+    _inColorTrans=false;
+    buildPalette(); // restore normal palette
+  }
+});
+
+document.getElementById('s-colhold').addEventListener('input',function(){
+  S.colorAnimHold=parseFloat(this.value);
+  document.getElementById('v-colhold').textContent=S.colorAnimHold.toFixed(1)+' s';
+});
+document.getElementById('s-coltrans').addEventListener('input',function(){
+  S.colorAnimTrans=parseFloat(this.value);
+  document.getElementById('v-coltrans').textContent=S.colorAnimTrans.toFixed(1)+' s';
+});
+
+document.getElementById('btn-add-color-step').addEventListener('click',()=>{
+  const step={scheme:S.scheme};
+  if(S.scheme==='custom') step.customStops=S.customStops.map(s=>({...s})),step.customSat=S.customSat;
+  S.colorAnimList.push(step);
+  renderColorAnimList();
+});
+
+renderColorAnimList();
+
+// ── Text-Gravitationsfeld UI ─────────────────────────────────────────────
+const togTextGrav = document.getElementById('t-text-grav');
+const textGravBody = document.getElementById('text-grav-body');
+
+togTextGrav.addEventListener('click', () => {
+  S.textGravOn = !S.textGravOn;
+  togTextGrav.classList.toggle('on', S.textGravOn);
+  textGravBody.style.display = S.textGravOn ? 'block' : 'none';
+  markTextDirty();
+});
+
+document.getElementById('text-content-inp').addEventListener('input', function() {
+  S.textContent = this.value; markTextDirty();
+});
+bindSlider('s-textsize',   'v-textsize',   'textSize',   n => Math.round(n), markTextDirty);
+bindSlider('s-textweight', 'v-textweight', 'textWeight', n => Math.round(n), markTextDirty);
+bindSlider('s-textgrav',   'v-textgrav',   'textGravStr', n => Math.round(n));
+
+document.getElementById('btn-export').addEventListener('click',()=>{
+  const exportData={
+    ...S,
+    customStops: S.customStops.map(s=>({...s})),
+    colorAnimList: S.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})})),
+  };
+  const blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`partikel-flow-${new Date().toISOString().slice(0,10)}.json`; a.click();
+  URL.revokeObjectURL(url);
+});
+document.getElementById('btn-import').addEventListener('click',()=>document.getElementById('file-import').click());
+document.getElementById('file-import').addEventListener('change',e=>{
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      Object.assign(S,data);
+      if(data.customStops) S.customStops=data.customStops.map(s=>({...s}));
+      if(data.colorAnimList) S.colorAnimList=data.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})}));
+      applyAllUI(); buildPalette(); rebuildTrail(); clearCanvas();
+    }catch(err){alert('Fehler beim Importieren: '+err.message);}
+    e.target.value='';
+  };
+  reader.readAsText(file);
+});
+
+// ── applyAllUI: sync all UI elements from S ──────────────────────────────
+function applyAllUI(){
+  // Main sliders
+  [['s-count','v-count','count',fi],['s-life','v-life','life',n=>Math.round(n)],['s-alpha','v-alpha','alpha',f3],['s-lw','v-lw','lw',f1],['s-speed','v-speed','speed',f2],['s-turb','v-turb','turb',f1],['s-tscale','v-tscale','tscale',f1],['s-damp','v-damp','damp',f2],['s-trail','v-trail','trail',f2],['s-grav','v-grav','gravity',fi],['s-autoint','v-autoint','autoInterval',n=>n.toFixed(1)+' s'],['s-autodur','v-autodur','autoDuration',n=>n.toFixed(1)+' s'],].forEach(([sid,vid,key,fmt])=>{const sl=document.getElementById(sid),vl=document.getElementById(vid);if(sl)sl.value=S[key];if(vl)vl.textContent=fmt(S[key]);});
+  // Auto-grav (special scale)
+  slAutoGrav.value=Math.round(Math.sqrt(Math.max(0,S.autoGravity)));vlAutoGrav.textContent=fi(S.autoGravity);
+  // Toggles
+  togAdd.classList.toggle('on',S.additive);
+  togAuto.classList.toggle('on',S.autoClick);
+  // Animation params
+  for(const ap of ANIM_CFG){
+    const fmt=fmtFn(ap.fmt);
+    syncAnimToggle(ap.key,S[ap.onKey]);
+    [['s-amin-'+ap.key,'v-amin-'+ap.key,ap.minKey,fmt],['s-amax-'+ap.key,'v-amax-'+ap.key,ap.maxKey,fmt],['s-adur-'+ap.key,'v-adur-'+ap.key,ap.durKey,n=>Math.round(n)+' s'],].forEach(([sid,vid,key,sfmt])=>{const sl=document.getElementById(sid),vl=document.getElementById(vid);if(sl)sl.value=S[key];if(vl)vl.textContent=sfmt(S[key]);});
+    // Update anim-prog labels
+    const apl=document.getElementById('apl-'+ap.key),apr=document.getElementById('apr-'+ap.key);
+    if(apl)apl.textContent=fmt(S[ap.minKey]);if(apr)apr.textContent=fmt(S[ap.maxKey]);
+    // Pause-Slider sync
+    if(ap.pauseKey){const psl=document.getElementById('s-apause-'+ap.key),pvl=document.getElementById('v-apause-'+ap.key);if(psl)psl.value=S[ap.pauseKey];if(pvl)pvl.textContent=S[ap.pauseKey].toFixed(1)+' s';}
+  }
+  // Color animation
+  togColorAnim.classList.toggle('on', S.colorAnimOn);
+  colorAnimBody.style.display = S.colorAnimOn ? 'block' : 'none';
+  document.getElementById('s-colhold').value = S.colorAnimHold;
+  document.getElementById('v-colhold').textContent = S.colorAnimHold.toFixed(1)+' s';
+  document.getElementById('s-coltrans').value = S.colorAnimTrans;
+  document.getElementById('v-coltrans').textContent = S.colorAnimTrans.toFixed(1)+' s';
+  colAnim.idx=0; colAnim.phase='hold'; colAnim.startTime=performance.now();
+  _inColorTrans=false;
+  renderColorAnimList();
+  document.querySelectorAll('.sc-btn').forEach(b=>b.classList.toggle('active',b.dataset.scheme===S.scheme));
+  document.querySelectorAll('.drive-btn').forEach(b=>b.classList.toggle('active',b.dataset.drive===S.colorDrive));
+  document.getElementById('custom-editor').style.display=S.scheme==='custom'?'block':'none';
+  // Custom sat
+  slCsat.value=S.customSat;vlCsat.textContent=S.customSat;
+  renderCustomStops();
+  // Text gravity
+  togTextGrav.classList.toggle('on', S.textGravOn);
+  textGravBody.style.display = S.textGravOn ? 'block' : 'none';
+  document.getElementById('text-content-inp').value = S.textContent || '';
+  [['s-textsize','v-textsize','textSize',n=>Math.round(n)],
+   ['s-textweight','v-textweight','textWeight',n=>Math.round(n)],
+   ['s-textgrav','v-textgrav','textGravStr',n=>Math.round(n)]
+  ].forEach(([sid,vid,key,fmt])=>{const sl=document.getElementById(sid),vl=document.getElementById(vid);if(sl)sl.value=S[key];if(vl)vl.textContent=fmt(S[key]);});
+  markTextDirty();
+}
+
+// ── Leinwand leeren / Zurücksetzen ───────────────────────────────────────
+document.getElementById('btn-clear').addEventListener('click',clearCanvas);
+document.getElementById('btn-reset').addEventListener('click',()=>{
+  Object.assign(S,DEFAULTS);
+  S.customStops=DEFAULTS.customStops.map(s=>({...s}));
+  S.colorAnimList=DEFAULTS.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})}));
+  applyAllUI(); buildPalette(); rebuildTrail(); clearCanvas();
+});
+
+// Panel beim ersten Öffnen mit DEFAULTS synchronisieren
+applyAllUI();
+</script>
+</body>
+</html>
