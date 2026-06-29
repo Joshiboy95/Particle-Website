@@ -356,6 +356,10 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
         <div class="ctrl-hd"><span class="ctrl-name">Dämpfung</span><span class="ctrl-val" id="v-damp">0.95</span></div>
         <input type="range" id="s-damp" min="0.80" max="0.999" step="0.001" value="0.95">
       </div>
+      <div class="tog-row" style="margin-top:6px">
+        <span class="tog-name">FBM-Rauschen <span style="color:rgba(255,255,255,0.2);font-size:10px">(2 Oktaven)</span></span>
+        <div class="tog on" id="t-fbm"></div>
+      </div>
     </div>
     <div class="div"></div>
 
@@ -595,6 +599,8 @@ const DEFAULTS = {
   autoClick: true, autoInterval: 10.5, autoDuration: 2.3, autoGravity: 37249,
   // Cursor passive repulsion
   cursorRepel: true, cursorRepelStr: 1200,
+  // Partikel-Bibliothek
+  fbm: true,
   // Feuerwerk
   fwksOn: true, fwksMinClicks: 7, fwksMaxClicks: 15,
   fwksMinStrRaw: 175, fwksMaxStrRaw: 240, // actual = raw²
@@ -641,7 +647,24 @@ function noise(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(
 // ─── Flow Field ────────────────────────────────────────────────────────
 const COLS=64,ROWS=45;
 const FVX=new Float32Array(COLS*ROWS),FVY=new Float32Array(COLS*ROWS);
-function updateField(t){const E=0.04,sc=S.turb,te=t*S.tscale*0.0008;for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){const nx=(c/COLS)*sc,ny=(r/ROWS)*sc,i=r*COLS+c;FVX[i]=(noise(nx,ny+E+te)-noise(nx,ny-E+te))/(2*E);FVY[i]=-(noise(nx+E,ny+te*0.78)-noise(nx-E,ny+te*0.78))/(2*E);}}
+// FBM (Fractal Brownian Motion): second noise octave at 2.1× freq, 0.45× amplitude.
+// Creates organic, multi-scale vortex structures; cost is ~2× noise calls per update
+// (2880 cells × 8 calls vs 4) — negligible at 3-frame interval.
+function updateField(t){
+  const E=0.04,sc=S.turb,te=t*S.tscale*0.0008;
+  const fbm=S.fbm,sc2=sc*2.1,te2=te*1.37;
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    const nx=(c/COLS)*sc,ny=(r/ROWS)*sc,i=r*COLS+c;
+    let vx=(noise(nx,ny+E+te)-noise(nx,ny-E+te))/(2*E);
+    let vy=-(noise(nx+E,ny+te*0.78)-noise(nx-E,ny+te*0.78))/(2*E);
+    if(fbm){
+      const nx2=(c/COLS)*sc2,ny2=(r/ROWS)*sc2;
+      vx+=0.45*(noise(nx2,ny2+E+te2)-noise(nx2,ny2-E+te2))/(2*E);
+      vy-=0.45*(noise(nx2+E,ny2+te2*0.78)-noise(nx2-E,ny2+te2*0.78))/(2*E);
+    }
+    FVX[i]=vx;FVY[i]=vy;
+  }
+}
 let _fx=0,_fy=0;
 function sampleFieldInto(x,y){const fc=Math.max(0,Math.min((x/W)*(COLS-1),COLS-1.001)),fr=Math.max(0,Math.min((y/H)*(ROWS-1),ROWS-1.001));const c0=fc|0,c1=Math.min(c0+1,COLS-1),r0=fr|0,r1=Math.min(r0+1,ROWS-1);const tc=fc-c0,tr=fr-r0;const i00=r0*COLS+c0,i10=r0*COLS+c1,i01=r1*COLS+c0,i11=r1*COLS+c1;_fx=(1-tr)*((1-tc)*FVX[i00]+tc*FVX[i10])+tr*((1-tc)*FVX[i01]+tc*FVX[i11]);_fy=(1-tr)*((1-tc)*FVY[i00]+tc*FVY[i10])+tr*((1-tc)*FVY[i01]+tc*FVY[i11]);}
 
@@ -1350,6 +1373,10 @@ for (const ap of ANIM_CFG) {
 const togAdd=document.getElementById('t-add');
 togAdd.addEventListener('click',()=>{S.additive=!S.additive;togAdd.classList.toggle('on',S.additive);clearCanvas();});
 
+// ── FBM toggle ───────────────────────────────────────────────────────────
+const togFBM=document.getElementById('t-fbm');
+if(togFBM) togFBM.addEventListener('click',()=>{S.fbm=!S.fbm;togFBM.classList.toggle('on',S.fbm);clearCanvas();});
+
 // ── Colour schemes ───────────────────────────────────────────────────────
 document.querySelectorAll('.sc-btn').forEach(btn=>{
   btn.addEventListener('click',()=>{
@@ -1575,8 +1602,10 @@ function applyAllUI(){
   // Custom sat
   slCsat.value=S.customSat;vlCsat.textContent=S.customSat;
   renderCustomStops();
-  // Cursor repel
-  const _tcr=document.getElementById('t-cursor-repel');if(_tcr)_tcr.classList.toggle('on',S.cursorRepel);
+  // FBM toggle
+  const _tfbm=document.getElementById('t-fbm');if(_tfbm)_tfbm.classList.toggle('on',S.fbm);
+  // Cursor repel toggle + strength visibility
+  {const _tcr=document.getElementById('t-cursor-repel');if(_tcr)_tcr.classList.toggle('on',S.cursorRepel);const _crc=document.getElementById('cursor-repel-str-ctrl');if(_crc)_crc.style.display=S.cursorRepel?'':'none';}
   // Cursor repel strength
   (()=>{const sl=document.getElementById('s-cursor-repel-str'),vl=document.getElementById('v-cursor-repel-str');if(sl)sl.value=S.cursorRepelStr;if(vl)vl.textContent=fi(S.cursorRepelStr);})();
   // Fireworks toggle + body
@@ -1661,6 +1690,7 @@ document.getElementById('btn-surprise').addEventListener('click',()=>{
   S.turbAnim=Math.random()>0.3; S.speedAnim=Math.random()>0.3; S.trailAnim=Math.random()>0.6;
   if(S.turbAnim){const mn=+(0.5+Math.random()*2).toFixed(1);S.turbMin=mn;S.turbMax=+(mn+2+Math.random()*8).toFixed(1);S.turbDur=(8+Math.random()*20)|0;}
   if(S.speedAnim){const mn=+(0.05+Math.random()*0.15).toFixed(2);S.speedMin=mn;S.speedMax=+(mn+0.2+Math.random()*0.5).toFixed(2);S.speedDur=(10+Math.random()*25)|0;}
+  S.fbm=Math.random()>0.25;
   S.textGravOn=Math.random()>0.5;
   if(S.textGravOn){S.textGravAnim=true;S.textGravMax=(500+Math.random()*1500)|0;}
   S.colorAnimOn=Math.random()>0.4;
@@ -1669,7 +1699,12 @@ document.getElementById('btn-surprise').addEventListener('click',()=>{
 
 // ── Cursor repel toggle + strength ───────────────────────────────────────
 const togCursorRepel=document.getElementById('t-cursor-repel');
-togCursorRepel.addEventListener('click',()=>{S.cursorRepel=!S.cursorRepel;togCursorRepel.classList.toggle('on',S.cursorRepel);});
+const _crStrCtrl=document.getElementById('cursor-repel-str-ctrl');
+function _syncCursorRepelUI(){
+  togCursorRepel.classList.toggle('on',S.cursorRepel);
+  if(_crStrCtrl)_crStrCtrl.style.display=S.cursorRepel?'':'none';
+}
+togCursorRepel.addEventListener('click',()=>{S.cursorRepel=!S.cursorRepel;_syncCursorRepelUI();});
 bindSlider('s-cursor-repel-str','v-cursor-repel-str','cursorRepelStr',fi);
 
 // ── Fireworks UI ─────────────────────────────────────────────────────────
@@ -1718,6 +1753,7 @@ _bindRangePair('s-fwks-pmin','s-fwks-pmax','v-fwks-pmin','v-fwks-pmax','fwksMinP
 (()=>{
   const sl=document.getElementById('s-fwks-dur'),vl=document.getElementById('v-fwks-dur');
   sl.addEventListener('input',()=>{S.fwksClickDur=parseFloat(sl.value);vl.textContent=S.fwksClickDur.toFixed(1)+' s';});
+  makeValueEditable(vl,sl,'fwksClickDur',n=>n.toFixed(1)+' s',null);
 })();
 </script>
 </body>
