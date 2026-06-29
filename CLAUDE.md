@@ -256,32 +256,19 @@ bindSlider(sliderId, valId, key, formatFn, onChangeFn)
 
 ## Git Workflow
 
-This repository uses a simple single-file workflow.
-
-### Branch naming
-- Feature / AI session branches: `claude/<short-description>-<id>` (e.g. `claude/claude-md-docs-g632l4`)
-- Work directly on the designated branch; never push directly to `main` without review.
+This repository uses a simple single-file workflow. Push directly to `main` — no PRs, no feature branches.
 
 ### Committing
 ```bash
-# Stage only the main HTML file (avoid accidentally staging binaries or .env)
+# Stage only the relevant files (avoid accidentally staging binaries or .env)
 git add particle-flow-v5.html CLAUDE.md
 
-git commit -m "$(cat <<'EOF'
-Brief description of what changed and why
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-EOF
-)"
+git commit -m "Brief description of what changed and why"
 ```
 
-### Pushing and PRs
+### Pushing
 ```bash
-# First push from a new branch
-git push -u origin <branch-name>
-
-# After pushing, always create a draft PR via GitHub MCP tools
-# so changes are reviewable before merging to main
+git push origin main
 ```
 
 If a push fails due to a network error, retry with exponential back-off (2s, 4s, 8s, 16s), up to 4 retries.
@@ -291,8 +278,7 @@ If a push fails due to a network error, retry with exponential back-off (2s, 4s,
 2. Open the file directly in a browser to test (no server needed)
 3. Verify the golden path: animation runs, panel opens/closes, settings persist after export → import
 4. `git add particle-flow-v5.html && git commit -m "…"`
-5. `git push -u origin <branch>`
-6. Create or update a draft PR
+5. `git push origin main`
 
 ### What NOT to commit
 - `.env` files or any file containing API keys / tokens
