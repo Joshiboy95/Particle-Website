@@ -394,6 +394,10 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
         <span class="tog-name">Passive Abstoßung (Hover)</span>
         <div class="tog on" id="t-cursor-repel"></div>
       </div>
+      <div class="ctrl" id="cursor-repel-str-ctrl" style="margin-top:6px">
+        <div class="ctrl-hd"><span class="ctrl-name">Abstoßungsstärke</span><span class="ctrl-val" id="v-cursor-repel-str">1 200</span></div>
+        <input type="range" id="s-cursor-repel-str" min="100" max="8000" step="100" value="1200">
+      </div>
     </div>
     <div class="div"></div>
 
@@ -422,46 +426,46 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
         <div class="ctrl" style="margin-bottom:10px">
           <div class="ctrl-hd"><span class="ctrl-name">Klicks pro Salve</span></div>
           <div class="range-pair">
-            <input type="range" id="s-fwks-cmin" min="1" max="15" step="1" value="3">
-            <span class="rv" id="v-fwks-cmin">3</span>
+            <input type="range" id="s-fwks-cmin" min="1" max="15" step="1" value="7">
+            <span class="rv" id="v-fwks-cmin">7</span>
             <span class="sep">–</span>
-            <input type="range" id="s-fwks-cmax" min="1" max="20" step="1" value="8">
-            <span class="rv" id="v-fwks-cmax">8</span>
+            <input type="range" id="s-fwks-cmax" min="1" max="20" step="1" value="15">
+            <span class="rv" id="v-fwks-cmax">15</span>
           </div>
         </div>
         <div class="ctrl" style="margin-bottom:10px">
           <div class="ctrl-hd"><span class="ctrl-name">Stärke <span style="color:rgba(255,255,255,0.2);font-size:10px">(²-Skala)</span></span></div>
           <div class="range-pair">
-            <input type="range" id="s-fwks-smin" min="0" max="250" step="5" value="60">
-            <span class="rv" id="v-fwks-smin">3.6k</span>
+            <input type="range" id="s-fwks-smin" min="0" max="250" step="5" value="175">
+            <span class="rv" id="v-fwks-smin">30.6k</span>
             <span class="sep">–</span>
-            <input type="range" id="s-fwks-smax" min="0" max="250" step="5" value="185">
-            <span class="rv" id="v-fwks-smax">34k</span>
+            <input type="range" id="s-fwks-smax" min="0" max="250" step="5" value="240">
+            <span class="rv" id="v-fwks-smax">57.6k</span>
           </div>
         </div>
         <div class="ctrl" style="margin-bottom:10px">
           <div class="ctrl-hd"><span class="ctrl-name">Abstand zw. Klicks (ms)</span></div>
           <div class="range-pair">
-            <input type="range" id="s-fwks-imin" min="50" max="2000" step="50" value="200">
-            <span class="rv" id="v-fwks-imin">200</span>
+            <input type="range" id="s-fwks-imin" min="50" max="2000" step="50" value="50">
+            <span class="rv" id="v-fwks-imin">50</span>
             <span class="sep">–</span>
-            <input type="range" id="s-fwks-imax" min="50" max="2000" step="50" value="800">
-            <span class="rv" id="v-fwks-imax">800</span>
+            <input type="range" id="s-fwks-imax" min="50" max="2000" step="50" value="200">
+            <span class="rv" id="v-fwks-imax">200</span>
           </div>
         </div>
         <div class="ctrl" style="margin-bottom:10px">
           <div class="ctrl-hd"><span class="ctrl-name">Pause zw. Salven (s)</span></div>
           <div class="range-pair">
-            <input type="range" id="s-fwks-pmin" min="1" max="60" step="1" value="8">
-            <span class="rv" id="v-fwks-pmin">8</span>
+            <input type="range" id="s-fwks-pmin" min="1" max="60" step="1" value="11">
+            <span class="rv" id="v-fwks-pmin">11</span>
             <span class="sep">–</span>
-            <input type="range" id="s-fwks-pmax" min="1" max="120" step="1" value="25">
-            <span class="rv" id="v-fwks-pmax">25</span>
+            <input type="range" id="s-fwks-pmax" min="1" max="120" step="1" value="23">
+            <span class="rv" id="v-fwks-pmax">23</span>
           </div>
         </div>
         <div class="ctrl">
-          <div class="ctrl-hd"><span class="ctrl-name">Klickdauer</span><span class="ctrl-val" id="v-fwks-dur">0.6 s</span></div>
-          <input type="range" id="s-fwks-dur" min="0.1" max="3.0" step="0.1" value="0.6">
+          <div class="ctrl-hd"><span class="ctrl-name">Klickdauer</span><span class="ctrl-val" id="v-fwks-dur">0.2 s</span></div>
+          <input type="range" id="s-fwks-dur" min="0.1" max="3.0" step="0.1" value="0.2">
         </div>
         <div style="height:2px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;margin-top:6px">
           <div id="fwks-bar" style="height:100%;width:0%;background:rgba(255,160,40,.55);border-radius:2px"></div>
@@ -1569,9 +1573,26 @@ function applyAllUI(){
   renderCustomStops();
   // Cursor repel
   const _tcr=document.getElementById('t-cursor-repel');if(_tcr)_tcr.classList.toggle('on',S.cursorRepel);
-  // Fireworks
+  // Cursor repel strength
+  (()=>{const sl=document.getElementById('s-cursor-repel-str'),vl=document.getElementById('v-cursor-repel-str');if(sl)sl.value=S.cursorRepelStr;if(vl)vl.textContent=fi(S.cursorRepelStr);})();
+  // Fireworks toggle + body
   const _tfwks=document.getElementById('t-fwks');if(_tfwks)_tfwks.classList.toggle('on',S.fwksOn);
   const _fbody=document.getElementById('fwks-body');if(_fbody)_fbody.style.display=S.fwksOn?'block':'none';
+  // Fireworks sliders (range pairs + click dur)
+  (()=>{
+    function _sv(sid,val){const el=document.getElementById(sid);if(el)el.value=val;}
+    function _st(vid,txt){const el=document.getElementById(vid);if(el)el.textContent=txt;}
+    function _fmtStr(raw){const v=raw*raw;return v>=1000?Math.round(v/100)/10+'k':Math.round(v);}
+    _sv('s-fwks-cmin',S.fwksMinClicks);   _st('v-fwks-cmin',S.fwksMinClicks);
+    _sv('s-fwks-cmax',S.fwksMaxClicks);   _st('v-fwks-cmax',S.fwksMaxClicks);
+    _sv('s-fwks-smin',S.fwksMinStrRaw);   _st('v-fwks-smin',_fmtStr(S.fwksMinStrRaw));
+    _sv('s-fwks-smax',S.fwksMaxStrRaw);   _st('v-fwks-smax',_fmtStr(S.fwksMaxStrRaw));
+    _sv('s-fwks-imin',S.fwksMinInterval); _st('v-fwks-imin',S.fwksMinInterval);
+    _sv('s-fwks-imax',S.fwksMaxInterval); _st('v-fwks-imax',S.fwksMaxInterval);
+    _sv('s-fwks-pmin',S.fwksMinPause);    _st('v-fwks-pmin',S.fwksMinPause);
+    _sv('s-fwks-pmax',S.fwksMaxPause);    _st('v-fwks-pmax',S.fwksMaxPause);
+    _sv('s-fwks-dur',S.fwksClickDur);     _st('v-fwks-dur',S.fwksClickDur.toFixed(1)+' s');
+  })();
   // Text gravity
   togTextGrav.classList.toggle('on', S.textGravOn);
   textGravBody.style.display = S.textGravOn ? 'block' : 'none';
@@ -1642,9 +1663,10 @@ document.getElementById('btn-surprise').addEventListener('click',()=>{
   buildPalette(); rebuildTrail(); clearCanvas(); applyAllUI();
 });
 
-// ── Cursor repel toggle ───────────────────────────────────────────────────
+// ── Cursor repel toggle + strength ───────────────────────────────────────
 const togCursorRepel=document.getElementById('t-cursor-repel');
 togCursorRepel.addEventListener('click',()=>{S.cursorRepel=!S.cursorRepel;togCursorRepel.classList.toggle('on',S.cursorRepel);});
+bindSlider('s-cursor-repel-str','v-cursor-repel-str','cursorRepelStr',fi);
 
 // ── Fireworks UI ─────────────────────────────────────────────────────────
 const togFwks=document.getElementById('t-fwks'),fwksBody=document.getElementById('fwks-body');
