@@ -10,14 +10,14 @@
 body { background: #07070f; overflow: hidden; font-family: 'Figtree', system-ui, sans-serif; }
 canvas { display: block; position: fixed; inset: 0; }
 
-#btn-settings {
-  position: fixed; top: 16px; right: 16px; width: 42px; height: 42px;
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
-  border-radius: 10px; display: flex; align-items: center; justify-content: center;
-  cursor: pointer; z-index: 100; color: rgba(255,255,255,0.4);
-  transition: background .2s, border-color .2s, color .2s;
+.hud-btns { position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:100; }
+.hud-btn {
+  width:42px;height:42px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:rgba(255,255,255,0.4);transition:background .2s,border-color .2s,color .2s;
 }
-#btn-settings:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.18); color: rgba(255,255,255,0.85); }
+.hud-btn:hover { background:rgba(255,255,255,0.09);border-color:rgba(255,255,255,0.18);color:rgba(255,255,255,0.85); }
+.hud-btn.active { background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.45);color:#60a5fa; }
 
 #panel {
   position: fixed; top: 0; right: 0; bottom: 0; width: 300px;
@@ -138,17 +138,39 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
 /* ── Text-Eingabefeld ─────────────────────────────────────────────────── */
 .text-inp { width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:7px; color:rgba(255,255,255,0.75); font-size:13px; font-family:'Figtree',system-ui,sans-serif; padding:8px 10px; outline:none; transition:border-color .2s, background .2s; letter-spacing:.04em; }
 .text-inp:focus { border-color:rgba(59,130,246,.5); background:rgba(255,255,255,0.07); }
+
+/* ── Preset / Surprise-Me ───────────────────────────────────────────── */
+.preset-btn { flex:1;padding:9px 5px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:rgba(255,255,255,0.4);font-size:10px;font-family:inherit;cursor:pointer;transition:all .2s;line-height:1.5;text-align:center; }
+.preset-btn:hover { background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.18);color:rgba(255,255,255,0.8); }
+.surprise-btn { width:100%;padding:11px;background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(168,85,247,.08));border:1px solid rgba(120,100,255,0.18);border-radius:9px;color:rgba(180,160,255,0.75);font-size:12px;font-family:inherit;font-weight:500;cursor:pointer;transition:all .2s;letter-spacing:.05em; }
+.surprise-btn:hover { background:linear-gradient(135deg,rgba(59,130,246,.2),rgba(168,85,247,.2));border-color:rgba(140,120,255,.4);color:#fff; }
+
+/* ── Fireworks ──────────────────────────────────────────────────────── */
+.fw-prog-row { display:flex;justify-content:space-between;margin-top:5px; }
+.fw-badge { font-size:10px;color:rgba(255,180,50,.6);font-variant-numeric:tabular-nums; }
+.range-pair { display:flex;gap:7px;align-items:center;margin-top:5px; }
+.range-pair input[type=range] { flex:1; }
+.range-pair .rv { font-size:10px;color:rgba(255,255,255,0.35);white-space:nowrap;min-width:28px;text-align:right; }
+.range-pair .sep { font-size:10px;color:rgba(255,255,255,0.2); }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <input type="file" id="file-import" accept=".json" style="display:none">
 
-<button id="btn-settings">
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7zm7.43-2.92.07-.98c0-.33-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.58-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.32-.07.65-.07.98s.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66z"/>
-  </svg>
-</button>
+<div class="hud-btns">
+  <button class="hud-btn" id="btn-fullscreen" title="Vollbild">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+  </button>
+  <button class="hud-btn" id="btn-music" title="Atmosphärische Musik">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+  </button>
+  <button class="hud-btn" id="btn-settings" title="Einstellungen">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7zm7.43-2.92.07-.98c0-.33-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.58-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.32-.07.65-.07.98s.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66z"/>
+    </svg>
+  </button>
+</div>
 
 <div id="panel">
   <div class="ph">
@@ -167,6 +189,17 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
   </div>
   <div class="pb">
 
+    <!-- Schnellstart -->
+    <div class="sec">
+      <div class="sec-lbl">Schnellstart</div>
+      <div class="btn-row" style="margin-bottom:8px">
+        <button class="preset-btn" id="btn-preset-pc">My PC was expensive<br><span style="color:rgba(255,255,255,0.25)">180k Partikel</span></button>
+        <button class="preset-btn" id="btn-preset-phone">My Phone was expensive<br><span style="color:rgba(255,255,255,0.25)">25k Partikel</span></button>
+      </div>
+      <button class="surprise-btn" id="btn-surprise">✦ Surprise Me</button>
+    </div>
+    <div class="div"></div>
+
     <!-- Performance -->
     <div class="sec">
       <div class="sec-lbl">Performance</div>
@@ -179,9 +212,9 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
     <div class="sec">
       <div class="sec-lbl">Farbschema</div>
       <div class="scheme-grid">
-        <div class="sc-btn" data-scheme="blue"><div class="sc-sw" style="background:linear-gradient(90deg,#0d1b4a,#1a6fd4,#44ccff)"></div><div class="sc-name">Blau</div></div>
-        <div class="sc-btn" data-scheme="dual"><div class="sc-sw" style="background:linear-gradient(90deg,#c8860b,#1a6fd4)"></div><div class="sc-name">Gold + Blau</div></div>
-        <div class="sc-btn" data-scheme="indigo"><div class="sc-sw" style="background:linear-gradient(90deg,#0d0d1a,#2a2a6a,#5566cc)"></div><div class="sc-name">Indigo</div></div>
+        <div class="sc-btn" data-scheme="blue"><div class="sc-sw" style="background:linear-gradient(90deg,#040d28,#0a3fa8,#1a8fff,#60d0ff)"></div><div class="sc-name">Blau</div></div>
+        <div class="sc-btn" data-scheme="galaxy"><div class="sc-sw" style="background:linear-gradient(90deg,#12003a,#3b0ba8,#1a44cc,#00c0f0)"></div><div class="sc-name">Galaxis</div></div>
+        <div class="sc-btn" data-scheme="plasma"><div class="sc-sw" style="background:linear-gradient(90deg,#ff0090,#8800ee,#0066ff,#00ffe0)"></div><div class="sc-name">Plasma</div></div>
         <div class="sc-btn" data-scheme="ember"><div class="sc-sw" style="background:linear-gradient(90deg,#1a0505,#c03010,#ff8844)"></div><div class="sc-name">Ember</div></div>
         <div class="sc-btn" data-scheme="rainbow"><div class="sc-sw" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)"></div><div class="sc-name">Regenbogen</div></div>
         <div class="sc-btn" data-scheme="aurora"><div class="sc-sw" style="background:linear-gradient(90deg,#00c060,#00ccaa,#4466ff,#8833ee)"></div><div class="sc-name">Polarlicht</div></div>
@@ -357,6 +390,10 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
         <div class="ctrl-hd"><span class="ctrl-name">Gravitationsstärke</span><span class="ctrl-val" id="v-grav">3 000</span></div>
         <input type="range" id="s-grav" min="0" max="80000" step="500" value="3000">
       </div>
+      <div class="tog-row" style="margin-top:4px">
+        <span class="tog-name">Passive Abstoßung (Hover)</span>
+        <div class="tog on" id="t-cursor-repel"></div>
+      </div>
     </div>
     <div class="div"></div>
 
@@ -372,6 +409,67 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
           <input type="range" id="s-autograv" min="0" max="200" step="1" value="10">
         </div>
         <div style="margin-top:6px"><div style="height:2px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden"><div id="auto-bar" style="height:100%;width:0%;background:rgba(59,130,246,.5)"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:10px;color:rgba(255,255,255,0.2)" id="auto-status">Warte</span><span style="font-size:10px;color:rgba(59,130,246,.5)" id="auto-next">–</span></div></div>
+      </div>
+    </div>
+
+    <div class="div"></div>
+
+    <!-- Feuerwerk-Modus -->
+    <div class="sec">
+      <div class="sec-lbl">Feuerwerk-Modus</div>
+      <div class="tog-row"><span class="tog-name">Aktiv</span><div class="tog" id="t-fwks"></div></div>
+      <div id="fwks-body" style="display:none">
+        <div class="ctrl" style="margin-bottom:10px">
+          <div class="ctrl-hd"><span class="ctrl-name">Klicks pro Salve</span></div>
+          <div class="range-pair">
+            <input type="range" id="s-fwks-cmin" min="1" max="15" step="1" value="3">
+            <span class="rv" id="v-fwks-cmin">3</span>
+            <span class="sep">–</span>
+            <input type="range" id="s-fwks-cmax" min="1" max="20" step="1" value="8">
+            <span class="rv" id="v-fwks-cmax">8</span>
+          </div>
+        </div>
+        <div class="ctrl" style="margin-bottom:10px">
+          <div class="ctrl-hd"><span class="ctrl-name">Stärke <span style="color:rgba(255,255,255,0.2);font-size:10px">(²-Skala)</span></span></div>
+          <div class="range-pair">
+            <input type="range" id="s-fwks-smin" min="0" max="250" step="5" value="60">
+            <span class="rv" id="v-fwks-smin">3.6k</span>
+            <span class="sep">–</span>
+            <input type="range" id="s-fwks-smax" min="0" max="250" step="5" value="185">
+            <span class="rv" id="v-fwks-smax">34k</span>
+          </div>
+        </div>
+        <div class="ctrl" style="margin-bottom:10px">
+          <div class="ctrl-hd"><span class="ctrl-name">Abstand zw. Klicks (ms)</span></div>
+          <div class="range-pair">
+            <input type="range" id="s-fwks-imin" min="50" max="2000" step="50" value="200">
+            <span class="rv" id="v-fwks-imin">200</span>
+            <span class="sep">–</span>
+            <input type="range" id="s-fwks-imax" min="50" max="2000" step="50" value="800">
+            <span class="rv" id="v-fwks-imax">800</span>
+          </div>
+        </div>
+        <div class="ctrl" style="margin-bottom:10px">
+          <div class="ctrl-hd"><span class="ctrl-name">Pause zw. Salven (s)</span></div>
+          <div class="range-pair">
+            <input type="range" id="s-fwks-pmin" min="1" max="60" step="1" value="8">
+            <span class="rv" id="v-fwks-pmin">8</span>
+            <span class="sep">–</span>
+            <input type="range" id="s-fwks-pmax" min="1" max="120" step="1" value="25">
+            <span class="rv" id="v-fwks-pmax">25</span>
+          </div>
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-hd"><span class="ctrl-name">Klickdauer</span><span class="ctrl-val" id="v-fwks-dur">0.6 s</span></div>
+          <input type="range" id="s-fwks-dur" min="0.1" max="3.0" step="0.1" value="0.6">
+        </div>
+        <div style="height:2px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;margin-top:6px">
+          <div id="fwks-bar" style="height:100%;width:0%;background:rgba(255,160,40,.55);border-radius:2px"></div>
+        </div>
+        <div class="fw-prog-row">
+          <span class="fw-badge" id="fwks-status">Bereit</span>
+          <span class="fw-badge" id="fwks-next">–</span>
+        </div>
       </div>
     </div>
 
@@ -491,6 +589,13 @@ const DEFAULTS = {
   ],
   // Auto-Klick
   autoClick: true, autoInterval: 10.5, autoDuration: 2.3, autoGravity: 32041,
+  // Cursor passive repulsion
+  cursorRepel: true, cursorRepelStr: 1200,
+  // Feuerwerk
+  fwksOn: false, fwksMinClicks: 3, fwksMaxClicks: 8,
+  fwksMinStrRaw: 60, fwksMaxStrRaw: 185, // actual = raw²
+  fwksMinInterval: 200, fwksMaxInterval: 800,
+  fwksClickDur: 0.6, fwksMinPause: 8, fwksMaxPause: 25,
 };
 const S = {
   ...DEFAULTS,
@@ -568,15 +673,20 @@ function buildPalette(){
 function schemeColor(t,scheme,alpha,bright){
   const a=bright?alpha:alpha*.42,b=bright;
   switch(scheme){
-    case 'blue':{const h=(200+t*55)|0;return `hsla(${h},82%,${b?56:36}%,${a})`;}
-    case 'dual':{const h=t<.5?(30+t*60)|0:(205+t*90)|0,s=t<.5?90:82;return `hsla(${h},${s}%,${b?60:38}%,${a})`;}
-    case 'indigo':{const h=(218+t*35)|0;return `hsla(${h},38%,${b?46:26}%,${a})`;}
-    case 'ember':{const h=(t*38)|0;return `hsla(${h},88%,${b?52:32}%,${a})`;}
-    case 'rainbow':{const h=(t*360)|0;return `hsla(${h},92%,${b?58:36}%,${a})`;}
-    case 'aurora':{const h=(115+t*175)|0,l=b?(52-t*8)|0:(30-t*5)|0;return `hsla(${h},88%,${l}%,${a})`;}
+    // Improved: deeper range, more contrast
+    case 'blue':{const h=(215+t*45)|0,s=85,l=b?(20+t*55)|0:(8+t*28)|0;return `hsla(${h},${s}%,${l}%,${a})`;}
+    // New: deep cosmic, purple→electric blue→ice
+    case 'galaxy':{const h=(272-t*85)|0,s=b?90:60,l=b?(10+t*65)|0:(4+t*30)|0;return `hsla(${h},${s}%,${l}%,${a})`;}
+    // New: hot plasma, magenta→purple→cyan
+    case 'plasma':{const h=((320-t*140)+360)%360|0,s=100,l=b?(48+t*12)|0:(22+t*16)|0;return `hsla(${h},${s}%,${l}%,${a})`;}
+    case 'ember':{const h=(t*40)|0,s=90,l=b?(55-t*8)|0:(28-t*5)|0;return `hsla(${h},${s}%,${l}%,${a})`;}
+    case 'rainbow':{const h=(t*360)|0;return `hsla(${h},95%,${b?58:36}%,${a})`;}
+    case 'aurora':{const h=(115+t*178)|0,s=92,l=b?(58-t*14)|0:(30-t*8)|0;return `hsla(${h},${s}%,${l}%,${a})`;}
     case 'neon':{const h=((300-t*180)+360)%360|0;return `hsla(${h},100%,${b?60:38}%,${a})`;}
-    case 'sunset':{const h=((28-t*108)+360)%360|0;return `hsla(${h},90%,${b?56:34}%,${a})`;}
-    case 'ocean':{const h=(238-t*68)|0,l=b?(28+t*30)|0:(15+t*18)|0;return `hsla(${h},88%,${l}%,${a})`;}
+    // Improved: richer hue sweep
+    case 'sunset':{const h=((30-t*118)+360)%360|0,s=(95-t*12)|0,l=b?(58-t*6)|0:(28-t*8)|0;return `hsla(${h},${s}%,${l}%,${a})`;}
+    // Improved: deeper darks, brighter highs
+    case 'ocean':{const h=(238-t*74)|0,s=(88+t*6)|0,l=b?(18+t*42)|0:(7+t*24)|0;return `hsla(${h},${s}%,${l}%,${a})`;}
     case 'custom':{const stops=S.customStops,n=stops.length;if(n===1)return `hsla(${stops[0].h},${S.customSat}%,${b?50:28}%,${a})`;const pos=t*(n-1),idx=Math.min(Math.floor(pos),n-2),lt=pos-idx,h0=stops[idx].h,h1=stops[idx+1].h;let dh=h1-h0;if(dh>180)dh-=360;if(dh<-180)dh+=360;const h=((h0+dh*lt)+360)%360|0;return `hsla(${h},${S.customSat}%,${b?52:28}%,${a})`;}
   }
   return `hsla(210,80%,${b?50:30}%,${a})`;
@@ -745,20 +855,116 @@ for(let i=0;i<MAX;i++){pSeed[i]=Math.random();pBkt[i]=Math.floor(pSeed[i]*N_HUE)
 buildPalette();
 
 // ─── Input ─────────────────────────────────────────────────────────────
-const input={x:0,y:0,attract:false,repel:false};
-canvas.addEventListener('mousemove',e=>{input.x=e.clientX*_dpr;input.y=e.clientY*_dpr;});
+const input={x:0,y:0,attract:false,repel:false,onCanvas:false};
+canvas.addEventListener('mousemove',e=>{input.x=e.clientX*_dpr;input.y=e.clientY*_dpr;input.onCanvas=true;});
 canvas.addEventListener('mousedown',e=>{if(e.button===0)input.attract=true;if(e.button===2)input.repel=true;});
 canvas.addEventListener('mouseup',e=>{if(e.button===0)input.attract=false;if(e.button===2)input.repel=false;});
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
-canvas.addEventListener('mouseleave',()=>{input.attract=false;input.repel=false;});
-canvas.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];input.x=t.clientX*_dpr;input.y=t.clientY*_dpr;input.attract=true;},{passive:false});
+canvas.addEventListener('mouseleave',()=>{input.attract=false;input.repel=false;input.onCanvas=false;});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];input.x=t.clientX*_dpr;input.y=t.clientY*_dpr;input.attract=true;input.onCanvas=true;},{passive:false});
 canvas.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];input.x=t.clientX*_dpr;input.y=t.clientY*_dpr;},{passive:false});
-canvas.addEventListener('touchend',()=>{input.attract=false;});
+canvas.addEventListener('touchend',()=>{input.attract=false;input.onCanvas=false;});
+
+// ─── Fireworks state ───────────────────────────────────────────────────
+const fwks={state:'pause',clicksDone:0,totalClicks:0,nextClickTime:0,nextBurstTime:0,cx:0,cy:0,cEnd:0,cStr:0};
+function tickFireworks(now,doUI){
+  if(!S.fwksOn) return;
+  if(fwks.state==='pause'&&now>=fwks.nextBurstTime){
+    fwks.state='burst';
+    fwks.totalClicks=S.fwksMinClicks+Math.floor(Math.random()*(S.fwksMaxClicks-S.fwksMinClicks+1));
+    fwks.clicksDone=0; fwks.nextClickTime=now; fwks.cEnd=0;
+  }
+  if(fwks.state==='burst'){
+    if(now>=fwks.nextClickTime&&now>=fwks.cEnd&&fwks.clicksDone<fwks.totalClicks){
+      fwks.cx=W*.1+Math.random()*W*.8; fwks.cy=H*.1+Math.random()*H*.8;
+      const rawMin=S.fwksMinStrRaw,rawMax=S.fwksMaxStrRaw,rawR=rawMin+Math.random()*(rawMax-rawMin);
+      fwks.cStr=rawR*rawR;
+      fwks.cEnd=now+S.fwksClickDur*1000;
+      fwks.nextClickTime=now+S.fwksMinInterval+Math.random()*(S.fwksMaxInterval-S.fwksMinInterval);
+      fwks.clicksDone++;
+      if(typeof playMusicNote==='function'&&_musicOn) playMusicNote();
+    }
+    if(fwks.clicksDone>=fwks.totalClicks&&now>=fwks.cEnd){
+      fwks.state='pause';
+      fwks.nextBurstTime=now+(S.fwksMinPause+Math.random()*(S.fwksMaxPause-S.fwksMinPause))*1000;
+    }
+  }
+  if(doUI){
+    const bar=document.getElementById('fwks-bar'),st=document.getElementById('fwks-status'),nx=document.getElementById('fwks-next');
+    if(fwks.state==='burst'){
+      const prog=fwks.clicksDone/Math.max(1,fwks.totalClicks);
+      if(bar)bar.style.width=(prog*100).toFixed(0)+'%';
+      if(st)st.textContent=`Klick ${fwks.clicksDone}/${fwks.totalClicks}`;
+      if(nx)nx.textContent='';
+    } else {
+      const wait=Math.max(0,fwks.nextBurstTime-now)/1000;
+      if(bar)bar.style.width=((1-wait/Math.max(1,S.fwksMaxPause))*100).toFixed(0)+'%';
+      if(st)st.textContent='Pause';
+      if(nx)nx.textContent=wait.toFixed(1)+' s';
+    }
+  }
+}
 
 // ─── Auto-Click ────────────────────────────────────────────────────────
 const autoClick={active:false,x:0,y:0,startTime:0,endTime:0};
 let autoNextTime=0;
 const _autoBar=document.getElementById('auto-bar'),_autoStatus=document.getElementById('auto-status'),_autoNext=document.getElementById('auto-next');
+
+// ─── Music system ──────────────────────────────────────────────────────
+let _audioCtx=null,_masterGain=null,_filterNode=null,_musicOn=false;
+let _noteTimer=null,_energyAvg=0;
+const _PENTA=[65.41,73.42,82.41,98.00,110.00,130.81,146.83,164.81,196.00,220.00]; // C2 pentatonic
+
+function _initAudio(){
+  _audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  _masterGain=_audioCtx.createGain(); _masterGain.gain.value=0; _masterGain.connect(_audioCtx.destination);
+  // Delay reverb
+  const dly=_audioCtx.createDelay(2.5); dly.delayTime.value=0.9;
+  const fb=_audioCtx.createGain(); fb.gain.value=0.38; dly.connect(fb); fb.connect(dly);
+  const dryG=_audioCtx.createGain(); dryG.gain.value=0.65;
+  const wetG=_audioCtx.createGain(); wetG.gain.value=0.35;
+  // Filter
+  _filterNode=_audioCtx.createBiquadFilter(); _filterNode.type='lowpass';
+  _filterNode.frequency.value=500; _filterNode.Q.value=1.4;
+  _filterNode.connect(dryG); _filterNode.connect(dly); dly.connect(wetG);
+  dryG.connect(_masterGain); wetG.connect(_masterGain);
+  // Drone A1 55Hz
+  const o1=_audioCtx.createOscillator(); o1.type='sine'; o1.frequency.value=55;
+  const g1=_audioCtx.createGain(); g1.gain.value=0.32; o1.connect(g1); g1.connect(_filterNode); o1.start();
+  // E2 82.4Hz perfect fifth
+  const o2=_audioCtx.createOscillator(); o2.type='sine'; o2.frequency.value=82.4;
+  const g2=_audioCtx.createGain(); g2.gain.value=0.18; o2.connect(g2); g2.connect(_filterNode); o2.start();
+  // A2 110Hz slight detune for beating
+  const o3=_audioCtx.createOscillator(); o3.type='triangle'; o3.frequency.value=110.3;
+  const g3=_audioCtx.createGain(); g3.gain.value=0.09; o3.connect(g3); g3.connect(_filterNode); o3.start();
+}
+function playMusicNote(){
+  if(!_audioCtx||!_musicOn) return;
+  const f=_PENTA[Math.random()*_PENTA.length|0];
+  const osc=_audioCtx.createOscillator(); osc.type='sine'; osc.frequency.value=f;
+  const env=_audioCtx.createGain(); const t=_audioCtx.currentTime;
+  env.gain.setValueAtTime(0,t); env.gain.linearRampToValueAtTime(0.14,t+0.08);
+  env.gain.exponentialRampToValueAtTime(0.001,t+4.0);
+  osc.connect(env); env.connect(_filterNode); osc.start(t); osc.stop(t+4.5);
+}
+function _scheduleNote(){
+  clearTimeout(_noteTimer);
+  _noteTimer=setTimeout(()=>{if(_musicOn){playMusicNote();_scheduleNote();}},4000+Math.random()*9000);
+}
+function _updateMusicEnergy(){
+  if(!_audioCtx||!_filterNode) return;
+  const target=180+_energyAvg*2200;
+  _filterNode.frequency.setTargetAtTime(Math.min(target,2400),_audioCtx.currentTime,0.8);
+}
+function toggleMusic(){
+  const btn=document.getElementById('btn-music');
+  if(!_audioCtx){_initAudio();}
+  _musicOn=!_musicOn;
+  _masterGain.gain.setTargetAtTime(_musicOn?0.7:0,_audioCtx.currentTime,_musicOn?1.2:0.6);
+  if(_audioCtx.state==='suspended') _audioCtx.resume();
+  btn.classList.toggle('active',_musicOn);
+  if(_musicOn) _scheduleNote(); else clearTimeout(_noteTimer);
+}
 
 // ─── FPS ───────────────────────────────────────────────────────────────
 let _fps=60,_lastT=performance.now(),_fpsTimer=0;
@@ -834,6 +1040,7 @@ function animate() {
 
   tickAnimations(now, doUI);
   tickColorAnim(now, doUI);
+  tickFireworks(now, doUI);
 
   // Auto-Click timing
   if(S.autoClick){
@@ -869,8 +1076,11 @@ function animate() {
   if(time%3===0) updateField(time);
 
   const mx=input.x,my=input.y,doAtt=input.attract,doRep=input.repel,hasForce=doAtt||doRep;
+  const doPassiveRepel=S.cursorRepel&&!hasForce&&input.onCanvas;
+  const _crStr=S.cursorRepelStr,_crRad2=(180*_dpr)*(180*_dpr);
   const COUNT=S.count,damp=S.damp,spdScale=S.speed*.8,grav=S.gravity,cDrive=S.colorDrive;
   const autoOn=S.autoClick&&autoClick.active,autoGr=S.autoGravity,autoAX=autoClick.x,autoAY=autoClick.y;
+  const fwksActive=S.fwksOn&&fwks.state==='burst'&&now<fwks.cEnd;
   // Text gravity: rebuild field if dirty, then cache lookup scale
   if (_textDirty) { buildTextField(); _textDirty = false; }
   const textOn = _textActive && S.textGravStr > 0;
@@ -897,7 +1107,9 @@ function animate() {
       pVX[i]+=_fx*spdScale; pVY[i]+=_fy*spdScale;
 
       if(hasForce){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=grav/(d2+500),s=doAtt?1:-1;pVX[i]+=(dx/d)*mag*s;pVY[i]+=(dy/d)*mag*s;}}
+      else if(doPassiveRepel){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1&&d2<_crRad2){const d=Math.sqrt(d2),mag=_crStr/(d2+300);pVX[i]-=(dx/d)*mag;pVY[i]-=(dy/d)*mag;}}
       if(autoOn){const dx=autoAX-pX[i],dy=autoAY-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=autoGr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
+      if(fwksActive){const dx=fwks.cx-pX[i],dy=fwks.cy-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=fwks.cStr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
 
       if(textOn){
         const fc=Math.max(0,Math.min((pX[i]/W)*(TC-1),TC-1.001));
@@ -972,6 +1184,15 @@ function animate() {
     for(let b=0;b<N_TOTAL;b++){const len=bLen[b];if(!len)continue;ab++;ctx.beginPath();const x1a=bX1[b],y1a=bY1[b],x2a=bX2[b],y2a=bY2[b];for(let j=0;j<len;j++){ctx.moveTo(x1a[j],y1a[j]);ctx.lineTo(x2a[j],y2a[j]);}ctx.strokeStyle=PALETTE[b];ctx.stroke();}
     ctx.globalCompositeOperation='source-over';
     if(++_fpsTimer>45){updatePerfDisplay(ab);_fpsTimer=0;}
+  }
+  // Music energy tracking (cheap sample every ~10 frames)
+  if(_audioCtx&&_musicOn&&(time%10===0)){
+    const sampleN=Math.min(200,COUNT),step=Math.max(1,COUNT/sampleN);
+    let eSum=0;
+    for(let i=0;i<COUNT;i+=step) eSum+=pVX[i]*pVX[i]+pVY[i]*pVY[i];
+    const raw=Math.sqrt(eSum/(COUNT/step))/SLIMIT;
+    _energyAvg=_energyAvg*.94+raw*.06;
+    _updateMusicEnergy();
   }
 }
 
@@ -1195,7 +1416,7 @@ _cpEl.prog  = document.getElementById('color-anim-prog');
 _cpEl.phase = document.getElementById('color-anim-phase');
 _cpEl.next  = document.getElementById('color-anim-next');
 
-const SCHEME_LABELS={blue:'Blau',dual:'Gold+Blau',indigo:'Indigo',ember:'Ember',rainbow:'Regenbogen',aurora:'Polarlicht',neon:'Neon',sunset:'Sonnenunt.',ocean:'Ozean',custom:'Eigener'};
+const SCHEME_LABELS={blue:'Blau',galaxy:'Galaxis',plasma:'Plasma',ember:'Ember',rainbow:'Regenbogen',aurora:'Polarlicht',neon:'Neon',sunset:'Sonnenunt.',ocean:'Ozean',custom:'Eigener'};
 
 function getStepPreview(step){
   const ss=S.customStops,sc=S.customSat;
@@ -1346,6 +1567,11 @@ function applyAllUI(){
   // Custom sat
   slCsat.value=S.customSat;vlCsat.textContent=S.customSat;
   renderCustomStops();
+  // Cursor repel
+  const _tcr=document.getElementById('t-cursor-repel');if(_tcr)_tcr.classList.toggle('on',S.cursorRepel);
+  // Fireworks
+  const _tfwks=document.getElementById('t-fwks');if(_tfwks)_tfwks.classList.toggle('on',S.fwksOn);
+  const _fbody=document.getElementById('fwks-body');if(_fbody)_fbody.style.display=S.fwksOn?'block':'none';
   // Text gravity
   togTextGrav.classList.toggle('on', S.textGravOn);
   textGravBody.style.display = S.textGravOn ? 'block' : 'none';
@@ -1368,6 +1594,89 @@ document.getElementById('btn-reset').addEventListener('click',()=>{
 
 // Panel beim ersten Öffnen mit DEFAULTS synchronisieren
 applyAllUI();
+
+// ── Fullscreen ────────────────────────────────────────────────────────────
+document.getElementById('btn-fullscreen').addEventListener('click',e=>{
+  e.stopPropagation();
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+});
+document.addEventListener('fullscreenchange',()=>{
+  document.getElementById('btn-fullscreen').classList.toggle('active',!!document.fullscreenElement);
+});
+
+// ── Music ──────────────────────────────────────────────────────────────────
+document.getElementById('btn-music').addEventListener('click',e=>{e.stopPropagation();toggleMusic();});
+
+// ── Performance Presets ───────────────────────────────────────────────────
+document.getElementById('btn-preset-pc').addEventListener('click',()=>{
+  S.count=180000; S.life=450; S.alpha=1.5; S.speed=0.22; S.turb=4.2; S.trail=0.055; S.additive=true;
+  buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
+});
+document.getElementById('btn-preset-phone').addEventListener('click',()=>{
+  S.count=25000; S.life=380; S.alpha=1.2; S.speed=0.2; S.turb=3.5; S.trail=0.08; S.additive=true;
+  buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
+});
+
+// ── Surprise Me ───────────────────────────────────────────────────────────
+document.getElementById('btn-surprise').addEventListener('click',()=>{
+  const schemes=['neon','aurora','ember','sunset','ocean','rainbow','galaxy','plasma'];
+  const drives=['velocity','mixed','age','posX'];
+  S.scheme=schemes[Math.random()*schemes.length|0];
+  S.colorDrive=drives[Math.random()*drives.length|0];
+  S.count=Math.round((30000+Math.random()*120000)/500)*500;
+  S.life=Math.round((200+Math.random()*600)/10)*10;
+  S.trail=+(0.02+Math.random()*0.12).toFixed(3);
+  S.speed=+(0.05+Math.random()*0.4).toFixed(2);
+  S.turb=+(1.5+Math.random()*9).toFixed(1);
+  S.tscale=+(3+Math.random()*22).toFixed(1);
+  S.damp=+(0.87+Math.random()*0.1).toFixed(3);
+  S.alpha=+(0.7+Math.random()*0.85).toFixed(3);
+  S.additive=Math.random()>0.25;
+  S.turbAnim=Math.random()>0.3; S.speedAnim=Math.random()>0.3; S.trailAnim=Math.random()>0.6;
+  if(S.turbAnim){const mn=+(0.5+Math.random()*2).toFixed(1);S.turbMin=mn;S.turbMax=+(mn+2+Math.random()*8).toFixed(1);S.turbDur=(8+Math.random()*20)|0;}
+  if(S.speedAnim){const mn=+(0.05+Math.random()*0.15).toFixed(2);S.speedMin=mn;S.speedMax=+(mn+0.2+Math.random()*0.5).toFixed(2);S.speedDur=(10+Math.random()*25)|0;}
+  S.textGravOn=Math.random()>0.5;
+  if(S.textGravOn){S.textGravAnim=true;S.textGravMax=(500+Math.random()*1500)|0;}
+  S.colorAnimOn=Math.random()>0.4;
+  buildPalette(); rebuildTrail(); clearCanvas(); applyAllUI();
+});
+
+// ── Cursor repel toggle ───────────────────────────────────────────────────
+const togCursorRepel=document.getElementById('t-cursor-repel');
+togCursorRepel.addEventListener('click',()=>{S.cursorRepel=!S.cursorRepel;togCursorRepel.classList.toggle('on',S.cursorRepel);});
+
+// ── Fireworks UI ─────────────────────────────────────────────────────────
+const togFwks=document.getElementById('t-fwks'),fwksBody=document.getElementById('fwks-body');
+togFwks.addEventListener('click',()=>{
+  S.fwksOn=!S.fwksOn; togFwks.classList.toggle('on',S.fwksOn);
+  fwksBody.style.display=S.fwksOn?'block':'none';
+  if(S.fwksOn){fwks.state='pause';fwks.nextBurstTime=performance.now()+1500;}
+});
+function _bindRangePair(sidMin,sidMax,vidMin,vidMax,minKey,maxKey,fmt){
+  const slMin=document.getElementById(sidMin),slMax=document.getElementById(sidMax);
+  const vlMin=document.getElementById(vidMin),vlMax=document.getElementById(vidMax);
+  if(!slMin) return;
+  slMin.addEventListener('input',()=>{S[minKey]=parseFloat(slMin.value);vlMin.textContent=fmt(S[minKey]);});
+  slMax.addEventListener('input',()=>{S[maxKey]=parseFloat(slMax.value);vlMax.textContent=fmt(S[maxKey]);});
+}
+_bindRangePair('s-fwks-cmin','s-fwks-cmax','v-fwks-cmin','v-fwks-cmax','fwksMinClicks','fwksMaxClicks',n=>Math.round(n));
+_bindRangePair('s-fwks-imin','s-fwks-imax','v-fwks-imin','v-fwks-imax','fwksMinInterval','fwksMaxInterval',n=>Math.round(n));
+_bindRangePair('s-fwks-pmin','s-fwks-pmax','v-fwks-pmin','v-fwks-pmax','fwksMinPause','fwksMaxPause',n=>Math.round(n));
+// Strength sliders (raw² scale)
+(()=>{
+  const slMin=document.getElementById('s-fwks-smin'),slMax=document.getElementById('s-fwks-smax');
+  const vlMin=document.getElementById('v-fwks-smin'),vlMax=document.getElementById('v-fwks-smax');
+  function fmtStr(raw){const v=raw*raw;return v>=1000?Math.round(v/100)/10+'k':Math.round(v);}
+  slMin.addEventListener('input',()=>{S.fwksMinStrRaw=parseFloat(slMin.value);vlMin.textContent=fmtStr(S.fwksMinStrRaw);});
+  slMax.addEventListener('input',()=>{S.fwksMaxStrRaw=parseFloat(slMax.value);vlMax.textContent=fmtStr(S.fwksMaxStrRaw);});
+  vlMin.textContent=fmtStr(S.fwksMinStrRaw); vlMax.textContent=fmtStr(S.fwksMaxStrRaw);
+})();
+// Click duration
+(()=>{
+  const sl=document.getElementById('s-fwks-dur'),vl=document.getElementById('v-fwks-dur');
+  sl.addEventListener('input',()=>{S.fwksClickDur=parseFloat(sl.value);vl.textContent=S.fwksClickDur.toFixed(1)+' s';});
+})();
 </script>
 </body>
 </html>

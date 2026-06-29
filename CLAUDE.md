@@ -244,6 +244,49 @@ bindSlider(sliderId, valId, key, formatFn, onChangeFn)
 
 ---
 
+## Added Features (v5 → current)
+
+### HUD Buttons (top-right, outside panel)
+- **Fullscreen** (`btn-fullscreen`) — toggles `document.fullscreenElement`; `.active` class while in fullscreen
+- **Music** (`btn-music`) — starts/stops atmospheric ambient audio; `.active` while playing
+
+### Schnellstart (top of panel)
+- **Desktop preset** (`btn-preset-pc`) — sets 180k particles, optimised flow/trail for desktop
+- **Mobile preset** (`btn-preset-phone`) — sets 25k particles for smooth mobile performance
+- **Surprise Me** (`btn-surprise`) — randomises all parameters within aesthetic ranges; enables random animations and schemes
+
+### Colour Schemes
+- **Galaxy** — replaces Dual; deep purple → electric blue → ice-white (great with velocity drive)
+- **Plasma** — replaces Indigo; hot magenta → purple → vivid cyan (100% saturation)
+- All existing schemes improved: deeper darks, wider brightness contrast range
+
+### Physics — Cursor Passive Repulsion
+- `S.cursorRepel` (bool) + `S.cursorRepelStr` (default 1200)
+- Applied in staggered physics loop when `!hasForce && input.onCanvas`
+- Radius: 180 logical px; strength falls off with `1/(d² + 300)`
+- Togglable in Mouse section of panel
+
+### Fireworks Mode (panel section)
+State machine: `'burst'` → `'pause'` → `'burst'` …
+- `S.fwksOn`, `S.fwksMinClicks/fwksMaxClicks` — random clicks per burst
+- `S.fwksMinStrRaw/fwksMaxStrRaw` — strength slider uses `raw²` scale (same as auto-click)
+- `S.fwksMinInterval/fwksMaxInterval` — ms between clicks within a burst
+- `S.fwksClickDur` — seconds each individual click stays active
+- `S.fwksMinPause/fwksMaxPause` — pause seconds between bursts
+- Object: `fwks = {state, clicksDone, totalClicks, nextClickTime, nextBurstTime, cx, cy, cEnd, cStr}`
+- `tickFireworks(now, doUI)` — called from `animate()`; fires a music note on each click if music is on
+
+### Atmospheric Music
+- `_initAudio()` — lazy-init on first toggle (required for browser autoplay policy)
+- 3 oscillators: 55 Hz (A1 sine) + 82.4 Hz (E2 perfect fifth) + 110.3 Hz (A2 triangle, slight detune)
+- Delay-feedback reverb via two `GainNode`s chained to `DelayNode`
+- `_filterNode` (lowpass, Q=1.4) tracks particle energy: `_energyAvg → 180–2400 Hz cutoff`
+- `playMusicNote()` — picks a random `C2 pentatonic` frequency, 4-second exponential fade; also called on fireworks clicks
+- `_scheduleNote()` — schedules next ambient note every 4–13 seconds
+- Energy sampled every 10 frames over 200 random particles; 94/6 exponential smoothing
+
+---
+
 ## Known Limitations / TODOs
 
 1. **`gl.lineWidth > 1` unreliable on Windows/ANGLE** — particles always render 1px wide regardless of `S.lw`. Fix: quad-based rendering (6 vertices per particle as a rectangle).
