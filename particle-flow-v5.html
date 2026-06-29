@@ -875,22 +875,26 @@ function tickFireworks(now,doUI){
   if(!S.fwksOn) return;
   if(fwks.state==='pause'&&now>=fwks.nextBurstTime){
     fwks.state='burst';
-    fwks.totalClicks=S.fwksMinClicks+Math.floor(Math.random()*(S.fwksMaxClicks-S.fwksMinClicks+1));
+    const cRange=Math.max(0,S.fwksMaxClicks-S.fwksMinClicks);
+    fwks.totalClicks=Math.max(1,S.fwksMinClicks+Math.floor(Math.random()*(cRange+1)));
     fwks.clicksDone=0; fwks.nextClickTime=now; fwks.cEnd=0;
   }
   if(fwks.state==='burst'){
     if(now>=fwks.nextClickTime&&now>=fwks.cEnd&&fwks.clicksDone<fwks.totalClicks){
       fwks.cx=W*.1+Math.random()*W*.8; fwks.cy=H*.1+Math.random()*H*.8;
-      const rawMin=S.fwksMinStrRaw,rawMax=S.fwksMaxStrRaw,rawR=rawMin+Math.random()*(rawMax-rawMin);
+      const rawMin=Math.min(S.fwksMinStrRaw,S.fwksMaxStrRaw),rawMax=Math.max(S.fwksMinStrRaw,S.fwksMaxStrRaw);
+      const rawR=rawMin+Math.random()*(rawMax-rawMin);
       fwks.cStr=rawR*rawR;
       fwks.cEnd=now+S.fwksClickDur*1000;
-      fwks.nextClickTime=now+S.fwksMinInterval+Math.random()*(S.fwksMaxInterval-S.fwksMinInterval);
+      const iMin=Math.min(S.fwksMinInterval,S.fwksMaxInterval),iMax=Math.max(S.fwksMinInterval,S.fwksMaxInterval);
+      fwks.nextClickTime=now+iMin+Math.random()*(iMax-iMin);
       fwks.clicksDone++;
       if(typeof playMusicNote==='function'&&_musicOn) playMusicNote();
     }
     if(fwks.clicksDone>=fwks.totalClicks&&now>=fwks.cEnd){
       fwks.state='pause';
-      fwks.nextBurstTime=now+(S.fwksMinPause+Math.random()*(S.fwksMaxPause-S.fwksMinPause))*1000;
+      const pMin=Math.min(S.fwksMinPause,S.fwksMaxPause),pMax=Math.max(S.fwksMinPause,S.fwksMaxPause);
+      fwks.nextBurstTime=now+(pMin+Math.random()*(pMax-pMin))*1000;
     }
   }
   if(doUI){
@@ -1679,19 +1683,35 @@ function _bindRangePair(sidMin,sidMax,vidMin,vidMax,minKey,maxKey,fmt){
   const slMin=document.getElementById(sidMin),slMax=document.getElementById(sidMax);
   const vlMin=document.getElementById(vidMin),vlMax=document.getElementById(vidMax);
   if(!slMin) return;
-  slMin.addEventListener('input',()=>{S[minKey]=parseFloat(slMin.value);vlMin.textContent=fmt(S[minKey]);});
-  slMax.addEventListener('input',()=>{S[maxKey]=parseFloat(slMax.value);vlMax.textContent=fmt(S[maxKey]);});
+  slMin.addEventListener('input',()=>{
+    S[minKey]=parseFloat(slMin.value);
+    if(S[minKey]>S[maxKey]){S[maxKey]=S[minKey];slMax.value=S[minKey];if(vlMax)vlMax.textContent=fmt(S[maxKey]);}
+    vlMin.textContent=fmt(S[minKey]);
+  });
+  slMax.addEventListener('input',()=>{
+    S[maxKey]=parseFloat(slMax.value);
+    if(S[maxKey]<S[minKey]){S[minKey]=S[maxKey];slMin.value=S[maxKey];if(vlMin)vlMin.textContent=fmt(S[minKey]);}
+    vlMax.textContent=fmt(S[maxKey]);
+  });
 }
 _bindRangePair('s-fwks-cmin','s-fwks-cmax','v-fwks-cmin','v-fwks-cmax','fwksMinClicks','fwksMaxClicks',n=>Math.round(n));
 _bindRangePair('s-fwks-imin','s-fwks-imax','v-fwks-imin','v-fwks-imax','fwksMinInterval','fwksMaxInterval',n=>Math.round(n));
 _bindRangePair('s-fwks-pmin','s-fwks-pmax','v-fwks-pmin','v-fwks-pmax','fwksMinPause','fwksMaxPause',n=>Math.round(n));
-// Strength sliders (raw² scale)
+// Strength sliders (raw² scale) — also enforce min ≤ max
 (()=>{
   const slMin=document.getElementById('s-fwks-smin'),slMax=document.getElementById('s-fwks-smax');
   const vlMin=document.getElementById('v-fwks-smin'),vlMax=document.getElementById('v-fwks-smax');
   function fmtStr(raw){const v=raw*raw;return v>=1000?Math.round(v/100)/10+'k':Math.round(v);}
-  slMin.addEventListener('input',()=>{S.fwksMinStrRaw=parseFloat(slMin.value);vlMin.textContent=fmtStr(S.fwksMinStrRaw);});
-  slMax.addEventListener('input',()=>{S.fwksMaxStrRaw=parseFloat(slMax.value);vlMax.textContent=fmtStr(S.fwksMaxStrRaw);});
+  slMin.addEventListener('input',()=>{
+    S.fwksMinStrRaw=parseFloat(slMin.value);
+    if(S.fwksMinStrRaw>S.fwksMaxStrRaw){S.fwksMaxStrRaw=S.fwksMinStrRaw;slMax.value=S.fwksMinStrRaw;vlMax.textContent=fmtStr(S.fwksMaxStrRaw);}
+    vlMin.textContent=fmtStr(S.fwksMinStrRaw);
+  });
+  slMax.addEventListener('input',()=>{
+    S.fwksMaxStrRaw=parseFloat(slMax.value);
+    if(S.fwksMaxStrRaw<S.fwksMinStrRaw){S.fwksMinStrRaw=S.fwksMaxStrRaw;slMin.value=S.fwksMaxStrRaw;vlMin.textContent=fmtStr(S.fwksMinStrRaw);}
+    vlMax.textContent=fmtStr(S.fwksMaxStrRaw);
+  });
   vlMin.textContent=fmtStr(S.fwksMinStrRaw); vlMax.textContent=fmtStr(S.fwksMaxStrRaw);
 })();
 // Click duration
