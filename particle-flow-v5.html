@@ -10,7 +10,7 @@
 body { background: #07070f; overflow: hidden; font-family: 'Figtree', system-ui, sans-serif; }
 canvas { display: block; position: fixed; inset: 0; }
 
-.hud-btns { position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:100; }
+.hud-btns { position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:300; }
 .hud-btn {
   width:42px;height:42px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);
   border-radius:10px;display:flex;align-items:center;justify-content:center;
@@ -563,24 +563,24 @@ function clearCanvas() {
 
 // ─── Settings ─────────────────────────────────────────────────────────
 const DEFAULTS = {
-  count: 154500, life: 410,  alpha: 1.5,  lw: 2.4,
-  speed: 0.25,   turb: 4.0,  tscale: 18.5, damp: 0.90,
-  trail: 0.06,   additive: true,
-  gravity: 32000, scheme: 'neon', colorDrive: 'velocity',
+  count: 123500, life: 450,  alpha: 1.5,  lw: 1,
+  speed: 0.5167805561722065, turb: 6.517892903639673, tscale: 13.2, damp: 0.92,
+  trail: 0.055,  additive: true,
+  gravity: 51500, scheme: 'ember', colorDrive: 'velocity',
   customStops: [{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}], customSat: 80,
   // Animations
-  turbAnim:  true,  turbMin:  1.8,  turbMax:  6.5,  turbDur:  15,
-  speedAnim: true,  speedMin: 0.05, speedMax: 0.60, speedDur: 26,
+  turbAnim:  true,  turbMin:  1.6,  turbMax:  10,   turbDur:  21,
+  speedAnim: true,  speedMin: 0.11, speedMax: 0.64, speedDur: 27,
   alphaAnim: false, alphaMin: 0.05, alphaMax: 1.5,  alphaDur: 6,
   trailAnim: false, trailMin: 0.01, trailMax: 0.15, trailDur: 12,
   tscaleAnim:false, tscaleMin:0.0,  tscaleMax:6.0,  tscaleDur:15,
   // Text-Gravitationsfeld
-  textGravOn: true, textContent: 'Joshiboy95',
+  textGravOn: false, textContent: 'Joshiboy95',
   textSize: 45, textWeight: 150,
   textGravStr: 0,
-  textGravAnim: true, textGravMin: 0, textGravMax: 2000, textGravDur: 5, textGravPause: 36,
+  textGravAnim: true, textGravMin: 0, textGravMax: 1201, textGravDur: 5, textGravPause: 36,
   // Farbverlauf-Animation
-  colorAnimOn: true, colorAnimHold: 16.5, colorAnimTrans: 19.8,
+  colorAnimOn: true, colorAnimHold: 19.5, colorAnimTrans: 5.7,
   colorAnimList: [
     { scheme:'ember' },
     { scheme:'custom', customStops:[{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}], customSat:80 },
@@ -588,14 +588,14 @@ const DEFAULTS = {
     { scheme:'neon'   },
   ],
   // Auto-Klick
-  autoClick: true, autoInterval: 10.5, autoDuration: 2.3, autoGravity: 32041,
+  autoClick: true, autoInterval: 10.5, autoDuration: 2.3, autoGravity: 37249,
   // Cursor passive repulsion
   cursorRepel: true, cursorRepelStr: 1200,
   // Feuerwerk
-  fwksOn: false, fwksMinClicks: 3, fwksMaxClicks: 8,
-  fwksMinStrRaw: 60, fwksMaxStrRaw: 185, // actual = raw²
-  fwksMinInterval: 200, fwksMaxInterval: 800,
-  fwksClickDur: 0.6, fwksMinPause: 8, fwksMaxPause: 25,
+  fwksOn: true, fwksMinClicks: 7, fwksMaxClicks: 15,
+  fwksMinStrRaw: 175, fwksMaxStrRaw: 240, // actual = raw²
+  fwksMinInterval: 50, fwksMaxInterval: 200,
+  fwksClickDur: 0.2, fwksMinPause: 11, fwksMaxPause: 23,
 };
 const S = {
   ...DEFAULTS,
@@ -1246,7 +1246,7 @@ setTimeout(()=>{document.getElementById('hint').style.opacity='0';},5000);
 // ═══════════════════════════════════════════════════════════════════════
 
 const panel=document.getElementById('panel');
-document.getElementById('btn-settings').addEventListener('click',e=>{e.stopPropagation();panel.classList.add('open');});
+document.getElementById('btn-settings').addEventListener('click',e=>{e.stopPropagation();panel.classList.toggle('open');});
 document.getElementById('btn-close').addEventListener('click',()=>panel.classList.remove('open'));
 document.addEventListener('click',e=>{if(!panel.contains(e.target)&&e.target.id!=='btn-settings')panel.classList.remove('open');});
 panel.addEventListener('click',e=>e.stopPropagation());
