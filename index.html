@@ -652,6 +652,8 @@ let _texB = [null, null], _fboB = [null, null], _curB = 0;
 let TEX_DIM = 0;
 let _flowTex = null, _textTex = null, _paletteTex = null;
 let _floatLinearOK = false;
+let _isGL2 = false; // WebGL2-Kontext bevorzugt — Float-Sampling ist dort Core-Feature (keine OES_texture_float-Extension nötig)
+function _floatIF(){ return _isGL2 ? gl.RGBA32F : gl.RGBA; } // sized internalformat für Float-Texturen (WebGL2 verlangt RGBA32F statt unsized RGBA bei FLOAT-Type)
 
 function resize() {
   _dpr = window.devicePixelRatio || 1;
@@ -796,7 +798,7 @@ function _uploadFlowTex(){
   if (!_flowTex) return;
   for(let i=0;i<COLS*ROWS;i++){ const o=i*4; _flowBuf[o]=FVX[i]; _flowBuf[o+1]=FVY[i]; _flowBuf[o+2]=0; _flowBuf[o+3]=0; }
   gl.bindTexture(gl.TEXTURE_2D, _flowTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, COLS, ROWS, 0, gl.RGBA, gl.FLOAT, _flowBuf);
+  gl.texImage2D(gl.TEXTURE_2D, 0, _floatIF(), COLS, ROWS, 0, gl.RGBA, gl.FLOAT, _flowBuf);
 }
 
 // ─── Colour Palette ────────────────────────────────────────────────────
@@ -910,7 +912,7 @@ function _uploadTextTex(){
   if (!_textTex) return;
   for(let i=0;i<TC*TR;i++){ const o=i*4; _textBuf[o]=textFieldTX[i]; _textBuf[o+1]=textFieldTY[i]; _textBuf[o+2]=0; _textBuf[o+3]=0; }
   gl.bindTexture(gl.TEXTURE_2D, _textTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TC, TR, 0, gl.RGBA, gl.FLOAT, _textBuf);
+  gl.texImage2D(gl.TEXTURE_2D, 0, _floatIF(), TC, TR, 0, gl.RGBA, gl.FLOAT, _textBuf);
 }
 const PAL_A=new Float32Array(N_TOTAL*4); // HSL+A for current step
 const PAL_B=new Float32Array(N_TOTAL*4); // HSL+A for next step
@@ -1647,14 +1649,14 @@ function _fatalGpuError(msg) {
   throw new Error('GPGPU: ' + msg);
 }
 
-function _canRenderToType(glType){
+function _canRenderToType(glType, internalFormat){
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, 4, 0, gl.RGBA, glType, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat || gl.RGBA, 4, 4, 0, gl.RGBA, glType, null);
   const fbo = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
@@ -1906,7 +1908,10 @@ uniform float uAlpha;
 void main(){ gl_FragColor = vec4(${BG_R.toFixed(6)}, ${BG_G.toFixed(6)}, ${BG_B.toFixed(6)}, uAlpha); }`;
 
 function initWebGL() {
-  gl = canvas.getContext('webgl', {preserveDrawingBuffer:true, alpha:false, premultipliedAlpha:false, antialias:false});
+  const ctxOpts = {preserveDrawingBuffer:true, alpha:false, premultipliedAlpha:false, antialias:false};
+  gl = canvas.getContext('webgl2', ctxOpts);
+  _isGL2 = !!gl;
+  if (!gl) gl = canvas.getContext('webgl', ctxOpts);
   if (!gl) { _fatalGpuError('Kein WebGL-Kontext verfügbar.'); return; }
 
   // ── Fähigkeits-Check ────────────────────────────────────────────────
@@ -1915,24 +1920,42 @@ function initWebGL() {
     _fatalGpuError(`GPU erlaubt zu wenige Vertex-Texture-Fetches (MAX_VERTEX_TEXTURE_IMAGE_UNITS=${maxVertexTextures}, benötigt: 2) — der Render-Pass braucht gleichzeitigen Zugriff auf Positions- und Alters-Textur im Vertex-Shader.`);
     return;
   }
-  const oesTextureFloat = !!gl.getExtension('OES_texture_float');
-  const oesTextureHalfFloat = !!gl.getExtension('OES_texture_half_float');
-  if (!oesTextureFloat && !oesTextureHalfFloat) {
-    _fatalGpuError('Weder OES_texture_float noch OES_texture_half_float verfügbar — kein Fließkomma-Zustand in Texturen möglich.');
-    return;
+
+  let STATE_GLTYPE = null, STATE_INTERNALFORMAT = null;
+  if (_isGL2) {
+    // WebGL2: Float-Textur-Sampling ist Core-Feature (kein OES_texture_float nötig) — nur das
+    // Rendern IN eine Float-Textur (FBO, fürs Ping-Pong) braucht noch eine Extension.
+    const colorBufferFloat = !!gl.getExtension('EXT_color_buffer_float');
+    const colorBufferHalfFloat = !!gl.getExtension('EXT_color_buffer_half_float');
+    if (colorBufferFloat && _canRenderToType(gl.FLOAT, gl.RGBA32F)) {
+      STATE_GLTYPE = gl.FLOAT; STATE_INTERNALFORMAT = gl.RGBA32F;
+    } else if (colorBufferHalfFloat && _canRenderToType(gl.HALF_FLOAT, gl.RGBA16F)) {
+      STATE_GLTYPE = gl.HALF_FLOAT; STATE_INTERNALFORMAT = gl.RGBA16F;
+    }
+    if (!STATE_GLTYPE) {
+      _fatalGpuError('WebGL2 verfügbar, aber weder EXT_color_buffer_float noch EXT_color_buffer_half_float unterstützt — Treiber kann nicht in eine Fließkomma-Textur rendern (Ping-Pong-Verfahren).');
+      return;
+    }
+    _floatLinearOK = !!gl.getExtension('OES_texture_float_linear');
+  } else {
+    const oesTextureFloat = !!gl.getExtension('OES_texture_float');
+    const oesTextureHalfFloat = !!gl.getExtension('OES_texture_half_float');
+    if (!oesTextureFloat && !oesTextureHalfFloat) {
+      _fatalGpuError('Weder OES_texture_float noch OES_texture_half_float verfügbar — kein Fließkomma-Zustand in Texturen möglich.');
+      return;
+    }
+    if (oesTextureFloat && _canRenderToType(gl.FLOAT, gl.RGBA)) {
+      STATE_GLTYPE = gl.FLOAT; STATE_INTERNALFORMAT = gl.RGBA;
+    } else if (oesTextureHalfFloat) {
+      const HALF_FLOAT_OES = gl.getExtension('OES_texture_half_float').HALF_FLOAT_OES;
+      if (_canRenderToType(HALF_FLOAT_OES, gl.RGBA)) { STATE_GLTYPE = HALF_FLOAT_OES; STATE_INTERNALFORMAT = gl.RGBA; }
+    }
+    if (!STATE_GLTYPE) {
+      _fatalGpuError('Kann nicht in eine Fließkomma-Textur rendern (FBO unvollständig für FLOAT und HALF_FLOAT) — Treiber/GPU unterstützt das Ping-Pong-Verfahren nicht.');
+      return;
+    }
+    _floatLinearOK = oesTextureFloat && !!gl.getExtension('OES_texture_float_linear');
   }
-  let STATE_GLTYPE = null;
-  if (oesTextureFloat && _canRenderToType(gl.FLOAT)) {
-    STATE_GLTYPE = gl.FLOAT;
-  } else if (oesTextureHalfFloat) {
-    const HALF_FLOAT_OES = gl.getExtension('OES_texture_half_float').HALF_FLOAT_OES;
-    if (_canRenderToType(HALF_FLOAT_OES)) STATE_GLTYPE = HALF_FLOAT_OES;
-  }
-  if (!STATE_GLTYPE) {
-    _fatalGpuError('Kann nicht in eine Fließkomma-Textur rendern (FBO unvollständig für FLOAT und HALF_FLOAT) — Treiber/GPU unterstützt das Ping-Pong-Verfahren nicht.');
-    return;
-  }
-  _floatLinearOK = oesTextureFloat && !!gl.getExtension('OES_texture_float_linear');
 
   // ── Programme ─────────────────────────────────────────────────────────
   _lifeProg = compileProgram(computeQuadVS, lifeFS);
@@ -1975,12 +1998,12 @@ function initWebGL() {
   for (let k=0;k<2;k++) {
     _texA[k] = _makeStateTexture();
     gl.bindTexture(gl.TEXTURE_2D, _texA[k]);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TEX_DIM, TEX_DIM, 0, gl.RGBA, STATE_GLTYPE, seedAUpload);
+    gl.texImage2D(gl.TEXTURE_2D, 0, STATE_INTERNALFORMAT, TEX_DIM, TEX_DIM, 0, gl.RGBA, STATE_GLTYPE, seedAUpload);
     _fboA[k] = _makeFBO(_texA[k]);
 
     _texB[k] = _makeStateTexture();
     gl.bindTexture(gl.TEXTURE_2D, _texB[k]);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TEX_DIM, TEX_DIM, 0, gl.RGBA, STATE_GLTYPE, seedBUpload);
+    gl.texImage2D(gl.TEXTURE_2D, 0, STATE_INTERNALFORMAT, TEX_DIM, TEX_DIM, 0, gl.RGBA, STATE_GLTYPE, seedBUpload);
     _fboB[k] = _makeFBO(_texB[k]);
   }
   _curA = 0; _curB = 0;
@@ -1988,10 +2011,10 @@ function initWebGL() {
   // ── Sampler-Texturen: Flow-Feld, Text-Feld, Palette ─────────────────
   _flowTex = _makeSampledTexture(_floatLinearOK);
   gl.bindTexture(gl.TEXTURE_2D, _flowTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, COLS, ROWS, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, _floatIF(), COLS, ROWS, 0, gl.RGBA, gl.FLOAT, null);
   _textTex = _makeSampledTexture(_floatLinearOK);
   gl.bindTexture(gl.TEXTURE_2D, _textTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TC, TR, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, _floatIF(), TC, TR, 0, gl.RGBA, gl.FLOAT, null);
   _paletteTex = _makeSampledTexture(true); // LINEAR: weicher Verlauf zwischen Palette-Einträgen statt harter Kanten
   gl.bindTexture(gl.TEXTURE_2D, _paletteTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N_TOTAL, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
