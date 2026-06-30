@@ -60,6 +60,7 @@ The entire application lives in `particle-flow-v5.html`. There is no build step,
 - Direction field: per-cell vector pointing toward the nearest text pixel (search radius SR=10 cells)
 - Rebuilt only when settings change (`_textDirty` flag), not every frame
 - Sampled in the particle loop the same way as the flow field (bilinear, O(1) per particle)
+- **Viewport-relative sizing:** the user-facing slider sets `S.textSizePct` (0–100, % of the current viewport width `W`), not the rendered font size directly. `S.textSize` (logical px, what `buildTextField()` actually reads) is a *derived* value, recomputed by `_syncTextSize()` — which calls `_computeViewportTextSize(text, weight, targetWidthPhysical)` to find the logical font size that makes the rendered text exactly `W * (textSizePct/100)` physical px wide — on every event that can change either the target percentage or the rendered width: slider input, text-content input, text-weight input, `resize()`, and `applyAllUI()`. Text stays centred via the existing `textAlign='center'` in `buildTextField()`. This makes the text width track the viewport responsively across window resizes, orientation changes, and desktop/mobile presets, instead of needing a fixed px value re-tuned per device.
 
 ---
 
@@ -104,7 +105,7 @@ const DEFAULTS = {
   // Text gravity field
   textGravOn: false,
   textContent: 'Joshiboy95',
-  textSize: 45,          // font size in logical px (×DPR when rendered)
+  textSizePct: 60,       // target text width as % of viewport width (0–100, centred); derives S.textSize
   textWeight: 150,       // variable font weight 100–900
   textGravStr: -10000,   // current strength (animated), rests at textGravMin
   textGravAnim: true,    // special animation with pause cycle
@@ -171,6 +172,7 @@ const ANIM_CFG = [
 |---|---|
 | `buildPalette()` | Fills `PALETTE[]` + `PALETTE_RGBA[]` from `S.scheme`/`alpha`; no-op during colour transition |
 | `buildTextField()` | Builds text gravity field (256×180); only called when `_textDirty=true` |
+| `_syncTextSize()` | Recomputes `S.textSize` from `S.textSizePct` × current viewport width `W`; called on slider/content/weight input, `resize()`, and `applyAllUI()` |
 | `updateField(t)` | Computes curl-noise flow field (64×45); every 3 frames |
 | `tickAnimations(now, doUI)` | Cosine pendulum for all `ANIM_CFG` params; supports `pauseKey` |
 | `_tickPerfGovernor(now)` | Adjusts `physK` (2–4) against the `_fps` EMA with 1.5s hysteresis; called every frame from `animate()` before the staggering math |
