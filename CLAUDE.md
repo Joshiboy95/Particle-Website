@@ -68,16 +68,16 @@ All runtime state lives in the global `S` object. `DEFAULTS` holds the factory v
 ```javascript
 const DEFAULTS = {
   // Particles
-  count: 154500,     // slider 500–200000
-  life: 410,         // lifetime in frames
+  count: 100000,     // slider 500–200000
+  life: 600,         // lifetime in frames
   alpha: 1.5,        // brightness (HSLA alpha)
-  lw: 2.4,           // line width (gl.lineWidth — clamped to 1 on Windows/ANGLE)
+  lw: 1,             // line width (gl.lineWidth — clamped to 1 on Windows/ANGLE)
 
   // Flow
-  speed: 0.25,       // flow field force multiplier
-  turb: 4.0,         // turbulence = spatial noise scale
-  tscale: 18.5,      // time evolution speed of flow field
-  damp: 0.90,        // velocity damping per frame
+  speed: 0.294,      // flow field force multiplier
+  turb: 3.79,        // turbulence = spatial noise scale
+  tscale: 13.2,      // time evolution speed of flow field
+  damp: 0.92,        // velocity damping per frame
 
   // Trail
   trail: 0.06,       // fade-overlay alpha (lower = longer trail)
@@ -100,26 +100,42 @@ const DEFAULTS = {
   tscaleAnim:false, tscaleMin:0.0,  tscaleMax:6.0,  tscaleDur:15,
 
   // Text gravity field
-  textGravOn: true,
+  textGravOn: false,
   textContent: 'Joshiboy95',
   textSize: 45,          // font size in logical px (×DPR when rendered)
   textWeight: 150,       // variable font weight 100–900
-  textGravStr: 0,        // current strength (animated)
+  textGravStr: -10000,   // current strength (animated), rests at textGravMin
   textGravAnim: true,    // special animation with pause cycle
-  textGravMin: 0, textGravMax: 2000, textGravDur: 5, textGravPause: 36,
+  textGravMin: -10000, textGravMax: 0, textGravDur: 5, textGravPause: 6,
   // Cycle: [pause at min] → [min→max→min] → repeat
 
   // Colour animation
   colorAnimOn: true,
-  colorAnimHold: 16.5,   // seconds per colour scheme
-  colorAnimTrans: 19.8,  // seconds for smooth transition
+  colorAnimHold: 19.5,   // seconds per colour scheme
+  colorAnimTrans: 5.7,   // seconds for smooth transition
   colorAnimList: [ ... ],
 
   // Auto-click
   autoClick: true,
   autoInterval: 10.5,    // seconds between clicks
   autoDuration: 2.3,     // seconds per click
-  autoGravity: 32041,    // strength (slider raw² scale: raw≈179 → 32041)
+  autoGravity: 37249,    // strength (slider raw² scale)
+
+  // Fireworks
+  fwksOn: true, fwksMinClicks: 3, fwksMaxClicks: 7,
+  fwksMinStrRaw: 130, fwksMaxStrRaw: 250,  // actual = raw²
+  fwksClickDur: 0.4, fwksMinPause: 11, fwksMaxPause: 23,
+  fwksBurstOn: true,
+
+  // Komet (Schweifeffekt)
+  cometOn: true, cometIntensity: 'linUp',
+  cometStrRaw: 265, cometDuration: 1, cometInterval: 8,
+
+  // Kometenschauer
+  cometShowerOn: false,
+  cometShowerMinCount: 3, cometShowerMaxCount: 6,
+  cometShowerMinGap: 600, cometShowerMaxGap: 1800,
+  cometShowerMinPause: 20, cometShowerMaxPause: 40,
 };
 ```
 
@@ -284,18 +300,29 @@ State machine: `'burst'` → `'pause'` → `'burst'` …
 - `tickFireworks(now, doUI)` — called from `animate()`; fires a music note on each click if music is on
 
 ### Comet Mode / Schweifeffekt (panel section)
-A virtual click-point sweeps along a slightly curved path across the canvas, attracting particles like the other click-based forces.
-State machine: `'pause'` → `'active'` → `'pause'` …
-- `S.cometOn` — toggle (default off, lives in Advanced)
-- `S.cometIntensity` — `'gauss'` (rise→peak→fall) | `'linUp'` | `'linDown'`; min is always 0, the configured strength is the max
+A virtual click-point (or several, concurrently) sweeps along a slightly curved path across the canvas, attracting particles like the other click-based forces. Built on a small pool so multiple comet-tails can be in flight at once (needed for Kometenschauer, where spawn gaps can be shorter than a single comet's travel duration).
+- `S.cometOn` — master toggle (default **on**, lives in Advanced)
+- `S.cometIntensity` — `'gauss'` (rise→peak→fall) | `'linUp'` | `'linDown'`; min is always 0, the configured strength is the max. Used by the simple single-comet mode; each shower-spawned comet locks in this mode at spawn time.
 - `S.cometStrRaw` — strength slider uses `raw²` scale (same pattern as `autoGravity`)
-- `S.cometDuration` — seconds to traverse the path; since path length scales with the canvas diagonal, crossing speed automatically scales with screen size
-- `S.cometInterval` — pause seconds between comets
-- Object: `comet = {state, x0, y0, x1, y1, ctrlX, ctrlY, cx, cy, startTime, endTime, str, nextTime}`
-- `_cometGenPath()` — rejection-samples two random points inside a padded canvas rect (up to 10 tries) until their distance is ≥ 50% of the canvas diagonal; derives a quadratic-Bézier control point via a small random perpendicular offset (≤ 12% of segment length) for the slight curve. Endpoints don't need to touch the canvas edge.
-- `_cometPos(t)` — quadratic Bézier position at progress `t`
-- `cometIntensity(t)` — normalized 0→1→0 (gauss) or linear ramp, multiplied by `comet.str` each frame
-- `tickComet(now, doUI)` — called from `animate()` right after `tickFireworks`
+- `S.cometDuration` — seconds to traverse the path (single-comet mode); since path length scales with the canvas diagonal, crossing speed automatically scales with screen size
+- `S.cometInterval` — pause seconds between comets (single-comet mode)
+- `COMET_POOL_MAX = 8`, `cometPool = []` — shared pool of in-flight comet instances, each `{x0,y0,x1,y1,ctrlX,ctrlY,str,intensity,startTime,endTime,cx,cy,frameStr}`; oldest entry evicted via `.shift()` if full
+- `_cometSpawn(now, durationSec, strRaw, intensityMode)` — rejection-samples two random points inside a padded canvas rect (up to 10 tries) until their distance is ≥ 50% of the canvas diagonal, derives a quadratic-Bézier control point via a small random perpendicular offset (≤ 12% of segment length), and pushes a new pool entry
+- `cometIntensity(mode, t)` — normalized 0→1→0 (gauss) or linear ramp; `mode` is passed explicitly (not read from `S` live) so each pool entry's curve is locked in at spawn time
+- `tickComet(now, doUI)` — called from `animate()` right after `tickFireworks`. Each frame: prunes expired pool entries and updates each remaining entry's `cx`/`cy` (Bézier position) and `frameStr` (`str × cometIntensity(...)`) in place (no per-frame object allocation); then, if `S.cometOn`, drives whichever trigger mode is active
+- Physics loop consumes the pool directly: `const cometForces = S.cometOn ? cometPool : EMPTY_ARR` + a small `for` loop applying each entry's inverse-square attraction — same formula as the other click-like forces, just looped over a (typically 0–8 element) array
+
+**Single-comet mode** (default, `S.cometShowerOn = false`):
+- State object: `cometSingle = {state, nextTime}`, cycling `'pause'` → `'active'` → `'pause'` …
+- One comet at a time, spawned via `_cometSpawn(now, S.cometDuration, S.cometStrRaw, S.cometIntensity)`, then waits `S.cometInterval` seconds
+
+**Kometenschauer (comet shower) mode** (`S.cometShowerOn = true`, sub-toggle inside the Komet section):
+Same burst/pause principle as Fireworks, but spawning comet-tails instead of clicks.
+- `S.cometShowerOn` — toggle; swaps the panel's single-comet "Pause zw. Kometen" slider for the shower controls (`comet-single-ctrl` vs `comet-shower-ctrl`)
+- `S.cometShowerMinCount/cometShowerMaxCount` — random number of comets per shower
+- `S.cometShowerMinGap/cometShowerMaxGap` — random ms between comets within a shower
+- `S.cometShowerMinPause/cometShowerMaxPause` — random seconds pause between showers
+- State object: `cometShower = {state, spawned, totalCount, nextSpawnTime, nextShowerTime}`, cycling `'pause'` → `'burst'` → `'pause'` …; each spawned comet uses the current `S.cometDuration`/`S.cometStrRaw`/`S.cometIntensity` at spawn time
 
 ### Atmospheric Music
 - `_initAudio()` — lazy-init on first toggle (required for browser autoplay policy)
