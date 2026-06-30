@@ -215,9 +215,10 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
       <div class="sec-lbl">Schnellstart</div>
       <div class="btn-row" style="margin-bottom:8px">
         <button class="preset-btn" id="btn-preset-pc">My PC was expensive<br><span style="color:rgba(255,255,255,0.25)">4 Mio. Partikel</span></button>
-        <button class="preset-btn" id="btn-preset-phone">My Phone was expensive<br><span style="color:rgba(255,255,255,0.25)">1 Mio. Partikel</span></button>
-        <button class="preset-btn" id="btn-preset-mobile">Mobile<br><span style="color:rgba(255,255,255,0.25)">35k Partikel</span></button>
+        <button class="preset-btn" id="btn-preset-phone">My Phone was expensive<br><span style="color:rgba(255,255,255,0.25)">1,25 Mio. Partikel</span></button>
+        <button class="preset-btn" id="btn-preset-mobile">Balanced<br><span style="color:rgba(255,255,255,0.25)">500k Partikel</span></button>
       </div>
+      <button class="btn-ghost" id="btn-reset-top">Zurücksetzen</button>
       <button class="surprise-btn" id="btn-surprise">✦ Surprise Me</button>
     </div>
     <div class="div"></div>
@@ -673,13 +674,13 @@ function clearCanvas() {
 // ─── Settings ─────────────────────────────────────────────────────────
 const DEFAULTS = {
   count: 80000, life: 600,  alpha: 1.5,  lw: 1,
-  speed: 0.3461594734464187, turb: 1.6148775720713962, tscale: 13.2, damp: 0.92,
+  speed: 0.3461594734464187, turb: 1.6148775720713962, tscale: 13.2, damp: 0.95,
   trail: 0.055,  additive: true,
   gravity: 65000, scheme: 'neon', colorDrive: 'velocity',
   customStops: [{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}], customSat: 80,
   // Animations
   turbAnim:  true,  turbMin:  1.6,  turbMax:  10,   turbDur:  21,
-  speedAnim: true,  speedMin: 0.11, speedMax: 0.64, speedDur: 27,
+  speedAnim: true,  speedMin: 0.11, speedMax: 6.2, speedDur: 27,
   alphaAnim: false, alphaMin: 0.05, alphaMax: 1.5,  alphaDur: 6,
   trailAnim: false, trailMin: 0.01, trailMax: 0.15, trailDur: 12,
   tscaleAnim:false, tscaleMin:0.0,  tscaleMax:6.0,  tscaleDur:15,
@@ -2414,7 +2415,7 @@ function applyAllUI(){
 
 // ── Leinwand leeren / Zurücksetzen ───────────────────────────────────────
 document.getElementById('btn-clear').addEventListener('click',clearCanvas);
-document.getElementById('btn-reset').addEventListener('click',()=>{
+function _doReset(){
   Object.assign(S,DEFAULTS);
   S.customStops=DEFAULTS.customStops.map(s=>({...s}));
   S.colorAnimList=DEFAULTS.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})}));
@@ -2422,7 +2423,9 @@ document.getElementById('btn-reset').addEventListener('click',()=>{
   S.count = COUNT_CALIB_START;
   _countCalib = { active: true, windowStart: 0, samples: [], fails: 0 };
   applyAllUI(); buildPalette(); rebuildTrail(); clearCanvas();
-});
+}
+document.getElementById('btn-reset').addEventListener('click',_doReset);
+document.getElementById('btn-reset-top').addEventListener('click',_doReset);
 
 // Restores the default Geschwindigkeit-Animation (Min/Max/Dauer + on-state) after a manual override
 document.getElementById('btn-reset-speed').addEventListener('click',e=>{
@@ -2450,43 +2453,11 @@ document.addEventListener('fullscreenchange',()=>{
 });
 
 // ── Performance Presets ───────────────────────────────────────────────────
-// Desktop-Preset: optimiert für große Bildschirme (eigenständige Werte, DEFAULTS bleiben unberührt)
-const DESKTOP_PRESET = {
-  count: 4000000, life: 250, alpha: 1.5, lw: 6,
-  speed: 0.6397797844673414, turb: 1.9716886726758163, tscale: 13.2, damp: 0.962,
-  trail: 0.005, additive: true, gravity: 51500, scheme: 'custom',
-  customStops: [{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}], customSat: 80,
-  turbAnim: true, turbMin: 1.6, turbMax: 10, turbDur: 26,
-  speedAnim: true, speedMin: 0.05, speedMax: 0.64, speedDur: 40,
-  alphaAnim: false, alphaMin: 0.05, alphaMax: 1.5, alphaDur: 6,
-  trailAnim: false, trailMin: 0.01, trailMax: 0.15, trailDur: 12,
-  tscaleAnim: false, tscaleMin: 0, tscaleMax: 6, tscaleDur: 15,
-  textGravOn: true, textContent: 'Joshiboy95', textSizePct: 80, textWeight: 400,
-  textGravStr: 555.9299109903421, textGravAnim: true, textGravMin: 0, textGravMax: 1110,
-  textGravDur: 15, textGravPause: 3,
-  colorAnimOn: true, colorAnimHold: 19.5, colorAnimTrans: 5.7,
-  colorAnimList: [
-    {scheme:'ember'},
-    {scheme:'custom',customStops:[{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}],customSat:80},
-    {scheme:'neon'},
-    {scheme:'galaxy'},
-  ],
-  autoClick: true, autoInterval: 9, autoDuration: 2.3, autoGravity: 40000,
-  cursorRepel: true, cursorRepelStr: 8000, fbm: true,
-  fwksOn: true, fwksMinClicks: 3, fwksMaxClicks: 7, fwksMinStrRaw: 130, fwksMaxStrRaw: 250,
-  fwksMinInterval: 50, fwksMaxInterval: 200, fwksClickDur: 0.4, fwksMinPause: 11, fwksMaxPause: 23,
-  fwksBurstOn: true,
-  cometOn: true, cometIntensity: 'gauss', cometStrRaw: 265, cometDuration: 1, cometInterval: 8,
-  cometShowerOn: true, cometShowerMinCount: 1, cometShowerMaxCount: 4,
-  cometShowerMinGap: 100, cometShowerMaxGap: 500, cometShowerMinPause: 7, cometShowerMaxPause: 18,
-};
-// Wendet ein Preset-Objekt auf S an (gleiches Muster wie der JSON-Import)
-function _applyPreset(data){
-  Object.assign(S, data);
-  if(data.customStops) S.customStops=data.customStops.map(s=>({...s}));
-  if(data.colorAnimList) S.colorAnimList=data.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})}));
+// Setzen NUR die Partikelanzahl — alle anderen Einstellungen bleiben unberührt.
+function _setPresetCount(count){
+  S.count = count;
   _countCalibStop(); // Preset legt eine eigene Partikelanzahl fest → Kalibrierung erlischt
-  applyAllUI(); buildPalette(); rebuildTrail(); clearCanvas();
+  applyAllUI();
 }
 // Errechnet die Schriftgröße (logische px), damit ein Wort genau in targetWidthPhysical (physische px) passt
 function _computeViewportTextSize(text, weight, targetWidthPhysical){
@@ -2501,21 +2472,13 @@ function _syncTextSize(){
   S.textSize = _computeViewportTextSize(S.textContent, S.textWeight, W * (S.textSizePct/100));
 }
 document.getElementById('btn-preset-pc').addEventListener('click',()=>{
-  _applyPreset(DESKTOP_PRESET);
+  _setPresetCount(4000000);
 });
 document.getElementById('btn-preset-phone').addEventListener('click',()=>{
-  S.count=1000000; S.life=380; S.alpha=1.2; S.speed=0.2; S.turb=3.5; S.trail=0.08; S.additive=true;
-  _countCalibStop(); // Preset legt eine eigene Partikelanzahl fest → Kalibrierung erlischt
-  buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
+  _setPresetCount(1250000);
 });
 document.getElementById('btn-preset-mobile').addEventListener('click',()=>{
-  const data = {
-    ...DESKTOP_PRESET,
-    customStops: DESKTOP_PRESET.customStops.map(s=>({...s})),
-    colorAnimList: DESKTOP_PRESET.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})})),
-  };
-  data.count = 35000;
-  _applyPreset(data);
+  _setPresetCount(500000);
 });
 
 // ── Surprise Me ───────────────────────────────────────────────────────────
