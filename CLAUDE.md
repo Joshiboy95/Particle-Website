@@ -283,6 +283,20 @@ State machine: `'burst'` → `'pause'` → `'burst'` …
 - Object: `fwks = {state, clicksDone, totalClicks, nextClickTime, nextBurstTime, cx, cy, cEnd, cStr}`
 - `tickFireworks(now, doUI)` — called from `animate()`; fires a music note on each click if music is on
 
+### Comet Mode / Schweifeffekt (panel section)
+A virtual click-point sweeps along a slightly curved path across the canvas, attracting particles like the other click-based forces.
+State machine: `'pause'` → `'active'` → `'pause'` …
+- `S.cometOn` — toggle (default off, lives in Advanced)
+- `S.cometIntensity` — `'gauss'` (rise→peak→fall) | `'linUp'` | `'linDown'`; min is always 0, the configured strength is the max
+- `S.cometStrRaw` — strength slider uses `raw²` scale (same pattern as `autoGravity`)
+- `S.cometDuration` — seconds to traverse the path; since path length scales with the canvas diagonal, crossing speed automatically scales with screen size
+- `S.cometInterval` — pause seconds between comets
+- Object: `comet = {state, x0, y0, x1, y1, ctrlX, ctrlY, cx, cy, startTime, endTime, str, nextTime}`
+- `_cometGenPath()` — rejection-samples two random points inside a padded canvas rect (up to 10 tries) until their distance is ≥ 50% of the canvas diagonal; derives a quadratic-Bézier control point via a small random perpendicular offset (≤ 12% of segment length) for the slight curve. Endpoints don't need to touch the canvas edge.
+- `_cometPos(t)` — quadratic Bézier position at progress `t`
+- `cometIntensity(t)` — normalized 0→1→0 (gauss) or linear ramp, multiplied by `comet.str` each frame
+- `tickComet(now, doUI)` — called from `animate()` right after `tickFireworks`
+
 ### Atmospheric Music
 - `_initAudio()` — lazy-init on first toggle (required for browser autoplay policy)
 - 3 oscillators: 55 Hz (A1 sine) + 82.4 Hz (E2 perfect fifth) + 110.3 Hz (A2 triangle, slight detune)

@@ -519,6 +519,41 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
       </div>
     </div>
 
+    <!-- Komet (Schweifeffekt) -->
+    <div class="sec">
+      <div class="sec-lbl">Komet (Schweifeffekt)</div>
+      <div class="tog-row"><span class="tog-name">Aktiv</span><div class="tog" id="t-comet"></div></div>
+      <div id="comet-body" style="display:none">
+        <div class="ctrl" style="margin-bottom:10px">
+          <div class="ctrl-hd"><span class="ctrl-name">Intensitätsverlauf</span></div>
+          <div class="drive-grid">
+            <div class="drive-btn active" data-comet-int="gauss">Peak</div>
+            <div class="drive-btn" data-comet-int="linUp">Steigend</div>
+            <div class="drive-btn" data-comet-int="linDown">Fallend</div>
+          </div>
+        </div>
+        <div class="ctrl" style="margin-bottom:10px">
+          <div class="ctrl-hd"><span class="ctrl-name">Stärke <span style="color:rgba(255,255,255,0.2);font-size:10px">(²-Skala, Maximum)</span></span><span class="ctrl-val" id="v-comet-str">40.0k</span></div>
+          <input type="range" id="s-comet-str" min="0" max="300" step="5" value="200">
+        </div>
+        <div class="ctrl" style="margin-bottom:10px">
+          <div class="ctrl-hd"><span class="ctrl-name">Dauer (Bahn-Geschwindigkeit)</span><span class="ctrl-val" id="v-comet-dur">4.0 s</span></div>
+          <input type="range" id="s-comet-dur" min="1" max="15" step="0.5" value="4">
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-hd"><span class="ctrl-name">Pause zw. Kometen</span><span class="ctrl-val" id="v-comet-int">14 s</span></div>
+          <input type="range" id="s-comet-int" min="2" max="60" step="1" value="14">
+        </div>
+        <div style="height:2px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;margin-top:10px">
+          <div id="comet-bar" style="height:100%;width:0%;background:rgba(120,200,255,.55);border-radius:2px"></div>
+        </div>
+        <div class="fw-prog-row">
+          <span class="fw-badge" id="comet-status">Bereit</span>
+          <span class="fw-badge" id="comet-next">–</span>
+        </div>
+      </div>
+    </div>
+
     <div class="div"></div>
 
     <!-- Text-Gravitationsfeld -->
@@ -646,6 +681,10 @@ const DEFAULTS = {
   fwksMinInterval: 50, fwksMaxInterval: 200,
   fwksClickDur: 0.2, fwksMinPause: 11, fwksMaxPause: 23,
   fwksBurstOn: false, // 1. Hälfte der Klickdauer anziehend, 2. Hälfte abstoßend ("Platzeffekt")
+  // Komet (Schweifeffekt)
+  cometOn: false, cometIntensity: 'gauss', // 'gauss' | 'linUp' | 'linDown'
+  cometStrRaw: 200, // actual = raw²
+  cometDuration: 4, cometInterval: 14,
 };
 const S = {
   ...DEFAULTS,
@@ -979,6 +1018,75 @@ function tickFireworks(now,doUI){
   }
 }
 
+// ─── Komet (Schweifeffekt) ─────────────────────────────────────────────
+// Virtueller "Klickpunkt" wandert entlang einer leicht gekrümmten Bahn über
+// die Leinwand (wie ein Komet) und zieht Partikel an, mit konfigurierbarer
+// Intensitätskurve über die Laufzeit.
+const comet={state:'pause',x0:0,y0:0,x1:0,y1:0,ctrlX:0,ctrlY:0,cx:0,cy:0,startTime:0,endTime:0,str:0,nextTime:0};
+const _cometE0=Math.exp(-4);
+function cometIntensity(t){
+  if(S.cometIntensity==='linUp') return t;
+  if(S.cometIntensity==='linDown') return 1-t;
+  const d=(t-0.5)*2; // Gauß-Buckel: 0 bei t=0/1, 1 bei t=0.5
+  return (Math.exp(-d*d*4)-_cometE0)/(1-_cometE0);
+}
+function _cometGenPath(){
+  const diag=Math.sqrt(W*W+H*H),minLen=diag*0.5,pad=diag*0.06;
+  let x0=0,y0=0,x1=0,y1=0;
+  for(let n=0;n<10;n++){
+    x0=pad+Math.random()*(W-2*pad); y0=pad+Math.random()*(H-2*pad);
+    x1=pad+Math.random()*(W-2*pad); y1=pad+Math.random()*(H-2*pad);
+    const dx=x1-x0,dy=y1-y0;
+    if(Math.sqrt(dx*dx+dy*dy)>=minLen) break;
+  }
+  comet.x0=x0; comet.y0=y0; comet.x1=x1; comet.y1=y1;
+  // Leichte Krümmung: Kontrollpunkt = Mittelpunkt + zufälliger seitlicher Versatz (max. 12% der Länge)
+  const mx=(x0+x1)*.5,my=(y0+y1)*.5;
+  const dx=x1-x0,dy=y1-y0,len=Math.sqrt(dx*dx+dy*dy)||1;
+  const nx=-dy/len,ny=dx/len;
+  const bow=(Math.random()*2-1)*len*0.12;
+  comet.ctrlX=mx+nx*bow; comet.ctrlY=my+ny*bow;
+}
+function _cometPos(t){
+  const u=1-t;
+  return {
+    x: u*u*comet.x0+2*u*t*comet.ctrlX+t*t*comet.x1,
+    y: u*u*comet.y0+2*u*t*comet.ctrlY+t*t*comet.y1,
+  };
+}
+function tickComet(now,doUI){
+  if(!S.cometOn) return;
+  if(comet.state==='pause'&&now>=comet.nextTime){
+    comet.state='active';
+    _cometGenPath();
+    comet.str=S.cometStrRaw*S.cometStrRaw;
+    comet.startTime=now; comet.endTime=now+S.cometDuration*1000;
+  }
+  if(comet.state==='active'){
+    const t=Math.max(0,Math.min(1,(now-comet.startTime)/(comet.endTime-comet.startTime)));
+    const p=_cometPos(t);
+    comet.cx=p.x; comet.cy=p.y;
+    if(now>=comet.endTime){
+      comet.state='pause';
+      comet.nextTime=now+S.cometInterval*1000;
+    }
+  }
+  if(doUI){
+    const bar=document.getElementById('comet-bar'),st=document.getElementById('comet-status'),nx=document.getElementById('comet-next');
+    if(comet.state==='active'){
+      const prog=(now-comet.startTime)/Math.max(1,comet.endTime-comet.startTime);
+      if(bar)bar.style.width=(prog*100).toFixed(0)+'%';
+      if(st)st.textContent='Aktiv';
+      if(nx)nx.textContent='';
+    } else {
+      const wait=Math.max(0,comet.nextTime-now)/1000;
+      if(bar)bar.style.width=((1-wait/Math.max(1,S.cometInterval))*100).toFixed(0)+'%';
+      if(st)st.textContent='Pause';
+      if(nx)nx.textContent=wait.toFixed(1)+' s';
+    }
+  }
+}
+
 // ─── Auto-Click ────────────────────────────────────────────────────────
 const autoClick={active:false,x:0,y:0,startTime:0,endTime:0};
 let autoNextTime=0;
@@ -1223,6 +1331,7 @@ function animate() {
   tickAnimations(now, doUI);
   tickColorAnim(now, doUI);
   tickFireworks(now, doUI);
+  tickComet(now, doUI);
 
   // Auto-Click timing
   if(S.autoClick){
@@ -1265,6 +1374,8 @@ function animate() {
   const fwksActive=S.fwksOn&&fwks.state==='burst'&&now<fwks.cEnd;
   // Platzeffekt: 1. Hälfte der Klickdauer anziehend, 2. Hälfte abstoßend (Vorzeichen-Umkehr)
   const fwksSign=(fwksActive&&S.fwksBurstOn&&now>=fwks.cStart+(fwks.cEnd-fwks.cStart)*0.5)?-1:1;
+  const cometActive=S.cometOn&&comet.state==='active';
+  const cometStr=cometActive?comet.str*cometIntensity(Math.max(0,Math.min(1,(now-comet.startTime)/Math.max(1,comet.endTime-comet.startTime)))):0;
   // Text gravity: rebuild field if dirty, then cache lookup scale
   if (_textDirty) { buildTextField(); _textDirty = false; }
   const textOn = _textActive && S.textGravStr > 0;
@@ -1294,6 +1405,7 @@ function animate() {
       else if(doPassiveRepel){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1&&d2<_crRad2){const d=Math.sqrt(d2),mag=_crStr/(d2+300);pVX[i]-=(dx/d)*mag;pVY[i]-=(dy/d)*mag;}}
       if(autoOn){const dx=autoAX-pX[i],dy=autoAY-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=autoGr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
       if(fwksActive){const dx=fwks.cx-pX[i],dy=fwks.cy-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=fwks.cStr/(d2+500)*fwksSign;pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
+      if(cometActive){const dx=comet.cx-pX[i],dy=comet.cy-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=cometStr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
 
       if(textOn){
         const fc=Math.max(0,Math.min((pX[i]/W)*(TC-1),TC-1.001));
@@ -1798,6 +1910,17 @@ function applyAllUI(){
     _sv('s-fwks-pmax',S.fwksMaxPause);    _st('v-fwks-pmax',S.fwksMaxPause);
     _sv('s-fwks-dur',S.fwksClickDur);     _st('v-fwks-dur',S.fwksClickDur.toFixed(1)+' s');
   })();
+  // Komet toggle + body + intensity-mode + sliders
+  const _tcomet=document.getElementById('t-comet');if(_tcomet)_tcomet.classList.toggle('on',S.cometOn);
+  const _cbody=document.getElementById('comet-body');if(_cbody)_cbody.style.display=S.cometOn?'block':'none';
+  document.querySelectorAll('[data-comet-int]').forEach(b=>b.classList.toggle('active',b.dataset.cometInt===S.cometIntensity));
+  (()=>{
+    const sl=document.getElementById('s-comet-str'),vl=document.getElementById('v-comet-str');
+    function fmtStr(raw){const v=raw*raw;return v>=1000?Math.round(v/100)/10+'k':Math.round(v);}
+    if(sl)sl.value=S.cometStrRaw; if(vl)vl.textContent=fmtStr(S.cometStrRaw);
+  })();
+  (()=>{const sl=document.getElementById('s-comet-dur'),vl=document.getElementById('v-comet-dur');if(sl)sl.value=S.cometDuration;if(vl)vl.textContent=S.cometDuration.toFixed(1)+' s';})();
+  (()=>{const sl=document.getElementById('s-comet-int'),vl=document.getElementById('v-comet-int');if(sl)sl.value=S.cometInterval;if(vl)vl.textContent=Math.round(S.cometInterval)+' s';})();
   // Text gravity
   togTextGrav.classList.toggle('on', S.textGravOn);
   textGravBody.style.display = S.textGravOn ? 'block' : 'none';
@@ -1940,6 +2063,36 @@ _bindRangePair('s-fwks-pmin','s-fwks-pmax','v-fwks-pmin','v-fwks-pmax','fwksMinP
   const sl=document.getElementById('s-fwks-dur'),vl=document.getElementById('v-fwks-dur');
   sl.addEventListener('input',()=>{S.fwksClickDur=parseFloat(sl.value);vl.textContent=S.fwksClickDur.toFixed(1)+' s';});
   makeValueEditable(vl,sl,'fwksClickDur',n=>n.toFixed(1)+' s',null);
+})();
+
+// ── Komet UI ────────────────────────────────────────────────────────────
+const togComet=document.getElementById('t-comet'),cometBody=document.getElementById('comet-body');
+togComet.addEventListener('click',()=>{
+  S.cometOn=!S.cometOn; togComet.classList.toggle('on',S.cometOn);
+  cometBody.style.display=S.cometOn?'block':'none';
+  if(S.cometOn){comet.state='pause';comet.nextTime=performance.now()+1000;}
+});
+document.querySelectorAll('[data-comet-int]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('[data-comet-int]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); S.cometIntensity=btn.dataset.cometInt;
+  });
+});
+(()=>{
+  const sl=document.getElementById('s-comet-str'),vl=document.getElementById('v-comet-str');
+  function fmtStr(raw){const v=raw*raw;return v>=1000?Math.round(v/100)/10+'k':Math.round(v);}
+  sl.addEventListener('input',()=>{S.cometStrRaw=parseFloat(sl.value);vl.textContent=fmtStr(S.cometStrRaw);});
+  vl.textContent=fmtStr(S.cometStrRaw);
+})();
+(()=>{
+  const sl=document.getElementById('s-comet-dur'),vl=document.getElementById('v-comet-dur');
+  sl.addEventListener('input',()=>{S.cometDuration=parseFloat(sl.value);vl.textContent=S.cometDuration.toFixed(1)+' s';});
+  makeValueEditable(vl,sl,'cometDuration',n=>n.toFixed(1)+' s',null);
+})();
+(()=>{
+  const sl=document.getElementById('s-comet-int'),vl=document.getElementById('v-comet-int');
+  sl.addEventListener('input',()=>{S.cometInterval=parseFloat(sl.value);vl.textContent=Math.round(S.cometInterval)+' s';});
+  makeValueEditable(vl,sl,'cometInterval',n=>Math.round(n)+' s',null);
 })();
 </script>
 </body>
