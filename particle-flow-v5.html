@@ -10,7 +10,8 @@
 body { background: #07070f; overflow: hidden; font-family: 'Figtree', system-ui, sans-serif; }
 canvas { display: block; position: fixed; inset: 0; }
 
-.hud-btns { position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:300; }
+.hud-btns { position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:300;transition:top .3s cubic-bezier(.4,0,.2,1); }
+.hud-btns.panel-open { top:70px; }
 .hud-btn {
   width:42px;height:42px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);
   border-radius:10px;display:flex;align-items:center;justify-content:center;
@@ -871,7 +872,7 @@ const pX=new Float32Array(MAX),pY=new Float32Array(MAX);
 const pPX=new Float32Array(MAX),pPY=new Float32Array(MAX);
 const pVX=new Float32Array(MAX),pVY=new Float32Array(MAX);
 const pAge=new Float32Array(MAX),pMaxA=new Float32Array(MAX);
-const pSeed=new Float32Array(MAX),pBkt=new Uint8Array(MAX);
+const pSeed=new Float32Array(MAX),pBkt=new Uint8Array(MAX),pBrt=new Uint8Array(MAX);
 
 function spawnParticle(i,randomAge){
   pX[i]=pPX[i]=Math.random()*W; pY[i]=pPY[i]=Math.random()*H;
@@ -912,7 +913,10 @@ function tickFireworks(now,doUI){
       const iMin=Math.min(S.fwksMinInterval,S.fwksMaxInterval),iMax=Math.max(S.fwksMinInterval,S.fwksMaxInterval);
       fwks.nextClickTime=now+iMin+Math.random()*(iMax-iMin);
       fwks.clicksDone++;
-      if(typeof playMusicNote==='function'&&_musicOn) playMusicNote();
+      if(typeof playMusicNote==='function'&&_musicOn){
+        const maxSq=Math.max(rawMax*rawMax,1);
+        playMusicNote(fwks.cStr/maxSq);
+      }
     }
     if(fwks.clicksDone>=fwks.totalClicks&&now>=fwks.cEnd){
       fwks.state='pause';
@@ -969,12 +973,17 @@ function _initAudio(){
   const o3=_audioCtx.createOscillator(); o3.type='triangle'; o3.frequency.value=110.3;
   const g3=_audioCtx.createGain(); g3.gain.value=0.09; o3.connect(g3); g3.connect(_filterNode); o3.start();
 }
-function playMusicNote(){
+function playMusicNote(strength){
   if(!_audioCtx||!_musicOn) return;
-  const f=_PENTA[Math.random()*_PENTA.length|0];
+  // strength: optional 0..1, derived from firework click strength. Stärkere Klicks
+  // -> eine Oktave höher + etwas lauter, bleibt aber im ruhigen/mystischen Rahmen.
+  const s=strength==null?0:Math.max(0,Math.min(1,strength));
+  const octave=s>0.66?2:1;
+  const f=_PENTA[Math.random()*_PENTA.length|0]*octave;
+  const peak=0.14+s*0.10;
   const osc=_audioCtx.createOscillator(); osc.type='sine'; osc.frequency.value=f;
   const env=_audioCtx.createGain(); const t=_audioCtx.currentTime;
-  env.gain.setValueAtTime(0,t); env.gain.linearRampToValueAtTime(0.14,t+0.08);
+  env.gain.setValueAtTime(0,t); env.gain.linearRampToValueAtTime(peak,t+0.08);
   env.gain.exponentialRampToValueAtTime(0.001,t+4.0);
   osc.connect(env); env.connect(_filterNode); osc.start(t); osc.stop(t+4.5);
 }
@@ -1169,7 +1178,9 @@ function animate() {
 
     // v2 frisch aus pVX/pVY — korrekt für Physik- und Nicht-Physik-Frames
     const v2=pVX[i]*pVX[i]+pVY[i]*pVY[i];
-    const brt=(v2>SLIM2*.2)?1:0;
+    // Hysterese statt scharfer Schwelle: verhindert Flackern bei Geschwindigkeit nahe der Grenze
+    const brt=pBrt[i]?(v2>SLIM2*.15?1:0):(v2>SLIM2*.25?1:0);
+    pBrt[i]=brt;
     let hBkt;
     switch(cDrive){
       case 'velocity': hBkt=Math.min(Math.sqrt(v2)/SLIMIT*N_HUE|0,N_HUE-1);break;
@@ -1277,9 +1288,12 @@ setTimeout(()=>{document.getElementById('hint').style.opacity='0';},5000);
 // ═══════════════════════════════════════════════════════════════════════
 
 const panel=document.getElementById('panel');
-document.getElementById('btn-settings').addEventListener('click',e=>{e.stopPropagation();panel.classList.toggle('open');});
-document.getElementById('btn-close').addEventListener('click',()=>panel.classList.remove('open'));
-document.addEventListener('click',e=>{if(!panel.contains(e.target)&&e.target.id!=='btn-settings')panel.classList.remove('open');});
+// HUD-Buttons sitzen sonst genau über dem Panel-Header (Import/Export/Schließen) und blockieren dessen Klicks
+const _hudBtns=document.querySelector('.hud-btns');
+function setPanelOpen(on){panel.classList.toggle('open',on);if(_hudBtns)_hudBtns.classList.toggle('panel-open',on);}
+document.getElementById('btn-settings').addEventListener('click',e=>{e.stopPropagation();setPanelOpen(!panel.classList.contains('open'));});
+document.getElementById('btn-close').addEventListener('click',()=>setPanelOpen(false));
+document.addEventListener('click',e=>{if(!panel.contains(e.target)&&e.target.id!=='btn-settings'&&e.target.id!=='file-import')setPanelOpen(false);});
 panel.addEventListener('click',e=>e.stopPropagation());
 
 // Format helpers
