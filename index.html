@@ -952,6 +952,23 @@ function blendPaletteHSL(a,b,t){
   }
 }
 
+// Hält den sichtbaren Zustand mit colAnim.idx synchron, wenn der Zyklus von außen
+// (Toggle an / applyAllUI) auf einen Index zurückgesetzt wird, statt durch den
+// normalen Hold→Transition-Ablauf. Ohne das zeigt der Bildschirm bis zum
+// Hold-Ende weiter das vorherige Schema, und der nächste Übergang "snapt"
+// sichtbar auf colorAnimList[idx] um, weil PAL_A dann nicht mehr dem entspricht,
+// was tatsächlich gerade zu sehen war.
+function _syncColorAnimToIdx(){
+  if(!S.colorAnimOn) return;
+  const step=S.colorAnimList[colAnim.idx];
+  if(!step) return;
+  S.scheme=step.scheme;
+  if(step.customStops){S.customStops=step.customStops.map(s=>({...s}));S.customSat=step.customSat??80;}
+  buildPalette();
+  document.querySelectorAll('.sc-btn').forEach(b=>b.classList.toggle('active',b.dataset.scheme===S.scheme));
+  const ce=document.getElementById('custom-editor'); if(ce) ce.style.display=S.scheme==='custom'?'block':'none';
+}
+
 const _cpEl={prog:null,phase:null,next:null}; // cached DOM refs, filled after DOM ready
 function tickColorAnim(now,doUI){
   if(!S.colorAnimOn||S.colorAnimList.length<2){_inColorTrans=false;return;}
@@ -2241,6 +2258,7 @@ togColorAnim.addEventListener('click',()=>{
   colorAnimBody.style.display=S.colorAnimOn?'block':'none';
   if(S.colorAnimOn){
     colAnim.idx=0; colAnim.phase='hold'; colAnim.startTime=performance.now();
+    _syncColorAnimToIdx();
     renderColorAnimList();
   } else {
     _inColorTrans=false;
@@ -2343,6 +2361,7 @@ function applyAllUI(){
   document.getElementById('v-coltrans').textContent = S.colorAnimTrans.toFixed(1)+' s';
   colAnim.idx=0; colAnim.phase='hold'; colAnim.startTime=performance.now();
   _inColorTrans=false;
+  _syncColorAnimToIdx();
   renderColorAnimList();
   document.querySelectorAll('.sc-btn').forEach(b=>b.classList.toggle('active',b.dataset.scheme===S.scheme));
   document.querySelectorAll('.drive-btn').forEach(b=>b.classList.toggle('active',b.dataset.drive===S.colorDrive));
