@@ -738,7 +738,9 @@ const MAX=4000000;
 
 // Adaptive Partikelanzahl-Kalibrierung: Start immer bei COUNT_CALIB_START, unabhängig von DEFAULTS.count
 // — der Kalibrator (siehe _tickCountCalibrator) tastet sich von hier selbstständig nach oben.
-const COUNT_CALIB_START = 100000, COUNT_CALIB_STEP = 50000, COUNT_CALIB_MAX = MAX;
+// COUNT_CALIB_MAX ist bewusst niedriger als MAX (die Textur-/Slider-Obergrenze): der Kalibrator
+// soll automatisch höchstens bis 1 Mio. hochtasten, alles darüber ist manuell (Slider/Presets).
+const COUNT_CALIB_START = 100000, COUNT_CALIB_STEP = 50000, COUNT_CALIB_MAX = 1000000;
 const COUNT_CALIB_WINDOW = 4000; // ms je Messfenster (auch für die initiale Wartezeit)
 const COUNT_CALIB_MAX_FAILS = 3; // so viele Fehlversuche in Folge auf derselben Stufe, bevor zurückgerudert wird (gibt der höheren Stufe eine Chance, falls es nur ein kurzzeitiger Hänger war)
 let _countCalib = { active: true, windowStart: 0, samples: [], fails: 0 };
@@ -1534,7 +1536,9 @@ function _bindComputeUniforms(loc, textOn, textGS, spdScale, now, rowFrac) {
   gl.uniform4fv(loc.uForces, _forcesBuf);
   gl.uniform1i(loc.uForceCount, _forceCount);
   gl.uniform4fv(loc.uCursorRepel, _cursorRepelBuf);
-  gl.uniform1f(loc.uRespawnSeed, now*0.001 + time*0.731);
+  // Mit Modulo gewrappt, damit der Seed bei sehr langer Laufzeit (Stunden) nicht unbegrenzt
+  // wächst — auch der neue Hash bleibt am genauesten bei eher kleinen Eingabe-Größenordnungen.
+  gl.uniform1f(loc.uRespawnSeed, (now*0.001 + time*0.731) % 1000000.0);
   gl.uniform1f(loc.uLife, S.life);
   gl.uniform1f(loc.uRowFrac, rowFrac);
 }
@@ -1765,7 +1769,16 @@ const _f16Buf32View = new Uint32Array(_f16Buf32.buffer);
 // definiert und in beide Fragment-Shader eingebettet, damit beide Passes
 // garantiert identische Physik-/Respawn-Entscheidungen treffen (keine Divergenz).
 const computeStepGLSL = `
-float _hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
+// Bewusst ohne sin(): GPU-sin()-Implementierungen (v.a. ANGLE/D3D, manche Mobile-GPUs) verlieren
+// für große Argumente massiv an Genauigkeit, und dot(uv*1000+uRespawnSeed, vec2(127.1,311.7))
+// erzeugt genau solche großen Argumente — das Ergebnis kollabiert dann auf eine Handvoll fester
+// Werte, was sich als "Partikel spawnen immer an denselben paar Stellen" zeigt. fract() direkt
+// nach der Multiplikation hält alle Zwischenwerte klein, unabhängig von der Eingabe-Größenordnung.
+float _hash(vec2 p){
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
 
 void computeStep(vec2 uv, out vec2 newPos, out vec2 newVel, out float newAge, out float newMaxAge){
   vec4 a = texture2D(uTexA, uv);
@@ -1884,7 +1897,12 @@ uniform int uColorDrive;
 varying float vBIdx;
 varying float vAlphaMul;
 
-float _hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
+// Gleiche sin()-freie Hash-Variante wie im Compute-Pass (siehe computeStepGLSL) — aus demselben Grund.
+float _hash(vec2 p){
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
 
 void main(){
   vec4 a = texture2D(uTexA, aUv);
