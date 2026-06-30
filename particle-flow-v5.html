@@ -680,9 +680,9 @@ function clearCanvas() {
 // ─── Settings ─────────────────────────────────────────────────────────
 const DEFAULTS = {
   count: 80000, life: 600,  alpha: 1.5,  lw: 1,
-  speed: 0.29426088507299336, turb: 3.788096820208953, tscale: 13.2, damp: 0.92,
+  speed: 0.3461594734464187, turb: 1.6148775720713962, tscale: 13.2, damp: 0.92,
   trail: 0.055,  additive: true,
-  gravity: 51500, scheme: 'ember', colorDrive: 'velocity',
+  gravity: 65000, scheme: 'neon', colorDrive: 'velocity',
   customStops: [{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}], customSat: 80,
   // Animations
   turbAnim:  true,  turbMin:  1.6,  turbMax:  10,   turbDur:  21,
@@ -691,10 +691,10 @@ const DEFAULTS = {
   trailAnim: false, trailMin: 0.01, trailMax: 0.15, trailDur: 12,
   tscaleAnim:false, tscaleMin:0.0,  tscaleMax:6.0,  tscaleDur:15,
   // Text-Gravitationsfeld
-  textGravOn: false, textContent: 'Joshiboy95',
-  textSizePct: 60, textWeight: 150, // textSizePct: Zielbreite des Texts als % der Viewport-Breite (zentriert)
-  textGravStr: -10000,
-  textGravAnim: true, textGravMin: -10000, textGravMax: 0, textGravDur: 5, textGravPause: 6,
+  textGravOn: true, textContent: 'Joshiboy95',
+  textSizePct: 76, textWeight: 250, // textSizePct: Zielbreite des Texts als % der Viewport-Breite (zentriert)
+  textGravStr: 0,
+  textGravAnim: true, textGravMin: 0, textGravMax: 2130, textGravDur: 5, textGravPause: 16.5,
   // Farbverlauf-Animation
   colorAnimOn: true, colorAnimHold: 19.5, colorAnimTrans: 5.7,
   colorAnimList: [
@@ -704,9 +704,9 @@ const DEFAULTS = {
     { scheme:'neon'   },
   ],
   // Auto-Klick
-  autoClick: true, autoInterval: 10.5, autoDuration: 2.3, autoGravity: 37249,
+  autoClick: true, autoInterval: 9.5, autoDuration: 2.3, autoGravity: 40000,
   // Cursor passive repulsion
-  cursorRepel: true, cursorRepelStr: 1200,
+  cursorRepel: true, cursorRepelStr: 8000,
   // Partikel-Bibliothek
   fbm: true,
   // Feuerwerk
@@ -716,14 +716,14 @@ const DEFAULTS = {
   fwksClickDur: 0.4, fwksMinPause: 11, fwksMaxPause: 23,
   fwksBurstOn: true, // 1. Hälfte der Klickdauer anziehend, 2. Hälfte abstoßend ("Platzeffekt")
   // Komet (Schweifeffekt)
-  cometOn: true, cometIntensity: 'linUp', // 'gauss' | 'linUp' | 'linDown'
-  cometStrRaw: 265, // actual = raw²
+  cometOn: true, cometIntensity: 'gauss', // 'gauss' | 'linUp' | 'linDown'
+  cometStrRaw: 255, // actual = raw²
   cometDuration: 1, cometInterval: 8,
   // Kometenschauer (Schauer aus mehreren Schweifen, analog zum Feuerwerk-Burst)
-  cometShowerOn: false,
-  cometShowerMinCount: 3, cometShowerMaxCount: 6,
-  cometShowerMinGap: 600, cometShowerMaxGap: 1800, // ms zwischen Schweifen im Schauer
-  cometShowerMinPause: 20, cometShowerMaxPause: 40, // s Pause zwischen Schauern
+  cometShowerOn: true,
+  cometShowerMinCount: 1, cometShowerMaxCount: 8,
+  cometShowerMinGap: 100, cometShowerMaxGap: 500, // ms zwischen Schweifen im Schauer
+  cometShowerMinPause: 2, cometShowerMaxPause: 18, // s Pause zwischen Schauern
 };
 const S = {
   ...DEFAULTS,
