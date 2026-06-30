@@ -1001,15 +1001,20 @@ function tickColorAnim(now,doUI){
 const _paletteBuf = new Uint8Array(N_TOTAL*4);
 function _uploadPaletteTex(){
   if (!_paletteTex) return;
-  for(let i=0;i<N_TOTAL;i++){
-    const j=i*4;
-    _paletteBuf[j]  =Math.round(PALETTE_RGBA[j]  *255);
-    _paletteBuf[j+1]=Math.round(PALETTE_RGBA[j+1]*255);
-    _paletteBuf[j+2]=Math.round(PALETTE_RGBA[j+2]*255);
-    _paletteBuf[j+3]=Math.round(PALETTE_RGBA[j+3]*255);
+  // Textur ist 2D (N_HUE × N_BRT), zeilenweise nach Helligkeit, damit GPU-LINEAR-
+  // Filterung in beiden Achsen zwischen benachbarten Farbtönen UND Helligkeiten
+  // weich interpoliert (siehe vPalUV im Render-Vertex-Shader).
+  for(let h=0;h<N_HUE;h++){
+    for(let b=0;b<N_BRT;b++){
+      const src=(h*N_BRT+b)*4, dst=(b*N_HUE+h)*4;
+      _paletteBuf[dst]  =Math.round(PALETTE_RGBA[src]  *255);
+      _paletteBuf[dst+1]=Math.round(PALETTE_RGBA[src+1]*255);
+      _paletteBuf[dst+2]=Math.round(PALETTE_RGBA[src+2]*255);
+      _paletteBuf[dst+3]=Math.round(PALETTE_RGBA[src+3]*255);
+    }
   }
   gl.bindTexture(gl.TEXTURE_2D, _paletteTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N_TOTAL, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, _paletteBuf);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N_HUE, N_BRT, 0, gl.RGBA, gl.UNSIGNED_BYTE, _paletteBuf);
 }
 
 // ─── Buffers ───────────────────────────────────────────────────────────
@@ -1792,9 +1797,10 @@ ${computeStepGLSL}
 void main(){
   vec2 newPos, newVel; float newAge, newMaxAge;
   computeStep(vUv, newPos, newVel, newAge, newMaxAge);
-  vec4 oldB = texture2D(uTexB, vUv);
   float v2 = dot(newVel, newVel);
-  float brt = oldB.z > 0.5 ? (v2 > 121.0*0.15 ? 1.0 : 0.0) : (v2 > 121.0*0.25 ? 1.0 : 0.0);
+  // Stetiger Helligkeits-Übergang statt binärem 0/1-Sprung (vermeidet ein hartes
+  // Aufblitzen, sobald v2 die Schwelle kreuzt — siehe GPGPU-NOTES.md).
+  float brt = smoothstep(121.0*0.15, 121.0*0.25, v2);
   gl_FragColor = vec4(newAge, newMaxAge, brt, 0.0);
 }`;
 
@@ -1815,7 +1821,7 @@ attribute float aEnd;
 uniform sampler2D uTexA, uTexB;
 uniform vec2 uResolution;
 uniform int uColorDrive;
-varying float vBIdx;
+varying vec2 vPalUV;
 varying float vAlphaMul;
 
 // Gleiche sin()-freie Hash-Variante wie im Compute-Pass (siehe computeStepGLSL) — aus demselben Grund.
@@ -1841,22 +1847,25 @@ void main(){
   if (prog < 0.02 || prog > 0.98) alphaMul = 0.0;
   vAlphaMul = alphaMul;
 
-  float pBkt = floor(_hash(aUv * 977.0) * 16.0);
-  float hBkt;
+  // Stetiger Farbwert (0..1) statt 16er-Bucket+floor() — zusammen mit linearer
+  // Palette-Textur-Filterung (siehe uPalette-Setup) ergibt das einen weichen
+  // Verlauf statt harter Kanten zwischen Farben (siehe GPGPU-NOTES.md).
+  float pHash = _hash(aUv * 977.0);
+  float hueT;
   if (uColorDrive == 1) {
-    hBkt = floor(min(sqrt(v2) / 11.0, 0.999) * 16.0);
+    hueT = min(sqrt(v2) / 11.0, 0.999);
   } else if (uColorDrive == 2) {
-    hBkt = floor(clamp(pos.x / uResolution.x, 0.0, 0.999) * 16.0);
+    hueT = clamp(pos.x / uResolution.x, 0.0, 0.999);
   } else if (uColorDrive == 3) {
-    hBkt = floor(clamp(pos.y / uResolution.y, 0.0, 0.999) * 16.0);
+    hueT = clamp(pos.y / uResolution.y, 0.0, 0.999);
   } else if (uColorDrive == 4) {
-    hBkt = floor(min(prog, 0.999) * 16.0);
+    hueT = min(prog, 0.999);
   } else if (uColorDrive == 5) {
-    hBkt = mod(pBkt + floor(min(sqrt(v2) / 11.0, 0.999) * 8.0), 16.0);
+    hueT = fract(pHash + min(sqrt(v2) / 11.0, 0.999) * 0.5);
   } else {
-    hBkt = pBkt;
+    hueT = pHash;
   }
-  vBIdx = hBkt * 2.0 + brt;
+  vPalUV = vec2(hueT, brt);
 
   vec2 clip = (drawPos / uResolution) * 2.0 - 1.0;
   gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
@@ -1865,11 +1874,10 @@ void main(){
 const renderFS = `
 precision mediump float;
 uniform sampler2D uPalette;
-varying float vBIdx;
+varying vec2 vPalUV;
 varying float vAlphaMul;
 void main(){
-  float palU = (vBIdx + 0.5) / 32.0;
-  vec4 col = texture2D(uPalette, vec2(palU, 0.5));
+  vec4 col = texture2D(uPalette, vPalUV);
   col.a *= vAlphaMul;
   gl_FragColor = col;
 }`;
@@ -1966,7 +1974,7 @@ function initWebGL() {
   _textTex = _makeSampledTexture(_floatLinearOK);
   gl.bindTexture(gl.TEXTURE_2D, _textTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TC, TR, 0, gl.RGBA, gl.FLOAT, null);
-  _paletteTex = _makeSampledTexture(false); // NEAREST: diskrete Palette-Einträge, keine Interpolation
+  _paletteTex = _makeSampledTexture(true); // LINEAR: weicher Verlauf zwischen Palette-Einträgen statt harter Kanten
   gl.bindTexture(gl.TEXTURE_2D, _paletteTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N_TOTAL, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 

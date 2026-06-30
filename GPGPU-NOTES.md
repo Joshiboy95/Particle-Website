@@ -181,6 +181,29 @@ Einzelobjekts.
   Glitzer-Layer tatsächlich an der Partikelströmung orientiert statt nur den
   Lowpass zu modulieren.
 
+## Weiche Farbverläufe statt Bucket-Kanten
+
+Ursprünglich wurde jeder Partikel auf einen von 16 diskreten Hue-„Buckets“
+gemappt (`floor(t*16)`), kombiniert mit einer 32×1-Palette-Textur, die mit
+NEAREST gesampelt wurde. Sobald sich ein kontinuierlicher Antriebswert
+(v. a. `colorDrive='velocity'`, da Geschwindigkeit ständig leicht schwankt)
+über eine Bucket-Grenze bewegte, sprang die Farbe abrupt zum Nachbar-Bucket —
+sichtbar als harte Kante, bei Farbschema-Übergängen (`colorAnimOn`) zusätzlich
+verstärkt, weil sich dort auch die Bucket-Farben selbst gerade veränderten.
+
+Fix: die Palette-Textur ist jetzt 2D (`N_HUE × N_BRT` = 16×2 statt 32×1) und
+wird mit LINEAR statt NEAREST gefiltert; der Vertex-Shader berechnet pro
+Partikel einen stetigen Hue-Wert (`hueT`, kein `floor()`/Bucket-Index mehr)
+und eine stetige Helligkeit (`brt`, per `smoothstep()` im Lifecycle-Pass statt
+binärem 0/1-Sprung mit Hysterese). Beides zusammen als `vPalUV` an den
+Fragment-Shader übergeben — die GPU interpoliert dadurch bilinear zwischen
+benachbarten Palette-Einträgen in beiden Achsen (Farbton UND Helligkeit),
+statt hart zwischen festen Werten zu springen. Das verbessert sowohl die
+laufende Geschwindigkeits-Färbung als auch jeden Übergang zwischen zwei
+Farbschemata (inklusive des Sprungs vom letzten zurück zum ersten Eintrag in
+`colorAnimList`) gleichermaßen, da beide vorher unter derselben
+Bucket-Quantisierung litten.
+
 ## Text-Größe (viewport-relativ)
 
 `S.textSize` (logische px, von `buildTextField()` verwendet) wird synchron
