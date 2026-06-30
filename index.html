@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Partikel-Strömung</title>
+<title>Joshiboy95</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
 @font-face {
   font-family: 'Figtree';
@@ -633,13 +634,7 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
 <div id="hint">Linksklick halten · Gravitation &nbsp;—&nbsp; Rechtsklick · Abstoßung</div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════
-//  PARTIKEL-STRÖMUNG v4
-// ═══════════════════════════════════════════════════════════════════════
-
 const canvas = document.getElementById('c');
-// GPGPU: Partikelzustand lebt komplett in Float-Texturen auf der GPU (siehe initWebGL()).
-// Kein Canvas2D-Fallback mehr — fehlen die nötigen GPU-Fähigkeiten, wird das laut gemeldet.
 let gl = null;
 const BG = '#07070f';
 const BG_R = 7/255, BG_G = 7/255, BG_B = 15/255;
@@ -728,28 +723,14 @@ const S = {
   customStops: DEFAULTS.customStops.map(s=>({...s})),
   colorAnimList: DEFAULTS.colorAnimList.map(step=>({...step, ...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})})),
 };
-// GPGPU: Partikelzustand lebt komplett in Float-Texturen (siehe initWebGL()/_texA/_texB).
-// MAX bestimmt nur noch TEX_DIM (die feste Größe der Zustands-Texturen) — keine CPU-Arrays mehr.
-// Muss vor COUNT_CALIB_MAX stehen, da der Kalibrator bis an MAX heran hochtasten darf.
 const MAX=4000000;
 
-// Adaptive Partikelanzahl-Kalibrierung: Start immer bei COUNT_CALIB_START, unabhängig von DEFAULTS.count
-// — der Kalibrator (siehe _tickCountCalibrator) tastet sich von hier selbstständig nach oben.
-// COUNT_CALIB_MAX ist bewusst niedriger als MAX (die Textur-/Slider-Obergrenze): der Kalibrator
-// soll automatisch höchstens bis 1 Mio. hochtasten, alles darüber ist manuell (Slider/Presets).
 const COUNT_CALIB_START = 100000, COUNT_CALIB_STEP = 50000, COUNT_CALIB_MAX = 1000000;
 const COUNT_CALIB_WINDOW = 4000; // ms je Messfenster (auch für die initiale Wartezeit)
 const COUNT_CALIB_MAX_FAILS = 3; // so viele Fehlversuche in Folge auf derselben Stufe, bevor zurückgerudert wird (gibt der höheren Stufe eine Chance, falls es nur ein kurzzeitiger Hänger war)
 let _countCalib = { active: true, windowStart: 0, samples: [], fails: 0 };
 S.count = COUNT_CALIB_START;
 
-// Wenn der Kalibrator S.count erhöht, sollen die neu hinzukommenden Partikel nicht alle
-// schlagartig im selben Frame auftauchen (sie starten ohnehin alle an Position (0,0), siehe
-// initWebGL()-Seed-Kommentar — ein plötzlicher Sprung um COUNT_CALIB_STEP wirkt dadurch wie ein
-// kleiner Partikel-"Ausbruch" aus einer Ecke). _countRamp blendet die für Compute/Render aktive
-// Partikelzahl stattdessen über COUNT_RAMP_DUR ms weich von "from" auf "to" ein/aus. Nur für
-// automatische Kalibrator-Änderungen aktiv — direkte Nutzeraktionen (Slider, Presets, Import,
-// Surprise Me) sollen weiterhin sofort reagieren, siehe _countCalibStop().
 const COUNT_RAMP_DUR = 2000;
 let _countRamp = { from: S.count, to: S.count, start: 0 };
 function _effCountNow(now){
@@ -776,8 +757,6 @@ const ANIM_CFG = [
     sid:'s-textgrav', vid:'v-textgrav', fmt:'fi', pauseKey:'textGravPause' },
 ];
 
-// GPGPU: Trail-Fade liest S.trail jeden Frame live als Uniform (siehe animate()/_fadeProg) —
-// rebuildTrail() bleibt als No-Op erhalten, damit ANIM_CFG-Hook + bestehende Call-Sites unverändert bleiben.
 function rebuildTrail() {}
 
 // ─── Perlin Noise ──────────────────────────────────────────────────────
@@ -793,9 +772,6 @@ function noise(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(
 // ─── Flow Field ────────────────────────────────────────────────────────
 const COLS=64,ROWS=45;
 const FVX=new Float32Array(COLS*ROWS),FVY=new Float32Array(COLS*ROWS);
-// FBM (Fractal Brownian Motion): second noise octave at 2.1× freq, 0.45× amplitude.
-// Creates organic, multi-scale vortex structures; cost is ~2× noise calls per update
-// (2880 cells × 8 calls vs 4) — negligible at 3-frame interval.
 function updateField(t){
   const E=0.04,sc=S.turb,te=t*S.tscale*0.0008;
   const fbm=S.fbm,sc2=sc*2.1,te2=te*1.37;
@@ -814,8 +790,6 @@ function updateField(t){
 let _fx=0,_fy=0;
 function sampleFieldInto(x,y){const fc=Math.max(0,Math.min((x/W)*(COLS-1),COLS-1.001)),fr=Math.max(0,Math.min((y/H)*(ROWS-1),ROWS-1.001));const c0=fc|0,c1=Math.min(c0+1,COLS-1),r0=fr|0,r1=Math.min(r0+1,ROWS-1);const tc=fc-c0,tr=fr-r0;const i00=r0*COLS+c0,i10=r0*COLS+c1,i01=r1*COLS+c0,i11=r1*COLS+c1;_fx=(1-tr)*((1-tc)*FVX[i00]+tc*FVX[i10])+tr*((1-tc)*FVX[i01]+tc*FVX[i11]);_fy=(1-tr)*((1-tc)*FVY[i00]+tc*FVY[i10])+tr*((1-tc)*FVY[i01]+tc*FVY[i11]);}
 
-// GPGPU: Flow-Feld wird nach jedem updateField() als Float-Textur hochgeladen,
-// damit die Compute-Shader (Lifecycle/Physik) es per texture() sampeln können.
 const _flowBuf = new Float32Array(COLS*ROWS*4);
 function _uploadFlowTex(){
   if (!_flowTex) return;
@@ -876,8 +850,6 @@ function schemeColor(t,scheme,alpha,bright){
 }
 
 // ─── Text Gravity Field ────────────────────────────────────────────────
-// Eigenes hochauflösendes Gitter (4× Flow-Field) damit dünne Buchstabenstriche
-// sicher erfasst werden — bei 64×45 waren Zellen ~30px breit, zu grob.
 const _tc2 = document.createElement('canvas');
 const _tx2 = _tc2.getContext('2d', {willReadFrequently: true});
 const TC = 256, TR = 180; // Text-Feld Auflösung (vs COLS=64, ROWS=45 für Flow)
@@ -917,9 +889,6 @@ function buildTextField() {
             }
           }
         }
-        // Sanfter Abfall statt hartem Cutoff an der SR-Grenze: volle Stärke nah am
-        // Text, gegen 0 auslaufend zum Suchradius hin (smoothstep), damit am Rand
-        // kein sichtbarer "Kasten" durch den abrupten Sprung auf 0 entsteht.
         let falloff = 0;
         if (bD < 1e9) {
           const t = Math.min(1, Math.sqrt(bD) / SR);
@@ -935,7 +904,6 @@ function buildTextField() {
 
 function markTextDirty() { _textDirty = true; }
 
-// GPGPU: Text-Richtungsfeld wird nach buildTextField() als Float-Textur hochgeladen.
 const _textBuf = new Float32Array(TC*TR*4);
 function _uploadTextTex(){
   if (!_textTex) return;
@@ -1030,8 +998,6 @@ function tickColorAnim(now,doUI){
   }
 }
 
-// GPGPU: Palette wird jeden Frame als kleine UNSIGNED_BYTE-Textur hochgeladen (32×1, 128 Bytes) —
-// billig genug, weil Farb-Animation die Palette laufend überblenden kann.
 const _paletteBuf = new Uint8Array(N_TOTAL*4);
 function _uploadPaletteTex(){
   if (!_paletteTex) return;
@@ -1110,12 +1076,6 @@ function tickFireworks(now,doUI){
 }
 
 // ─── Komet (Schweifeffekt) ─────────────────────────────────────────────
-// Virtuelle "Klickpunkte" wandern entlang leicht gekrümmter Bahnen über die
-// Leinwand (wie Kometen) und ziehen Partikel an, mit konfigurierbarer
-// Intensitätskurve über die Laufzeit. Im normalen Modus läuft immer höchstens
-// ein Komet gleichzeitig (einfacher periodischer Trigger); im Schauer-Modus
-// feuert ein Feuerwerk-artiger Burst mehrere Kometen mit kleinem Versatz ab,
-// die sich zeitlich überlappen können — daher ein Pool statt eines Einzelobjekts.
 const COMET_POOL_MAX=8;
 const cometPool=[]; // aktive Instanzen: {x0,y0,x1,y1,ctrlX,ctrlY,str,intensity,startTime,endTime,cx,cy,frameStr}
 const cometSingle={state:'pause',nextTime:0};
@@ -1247,9 +1207,6 @@ function _getNoiseBuffer(){
 function _initAudio(){
   _audioCtx=new(window.AudioContext||window.webkitAudioContext)();
   _masterGain=_audioCtx.createGain(); _masterGain.gain.value=0;
-  // Limiter: fängt Pegelspitzen ab, wenn viele Feuerwerk-Klicks/Sparkle-Grains gleichzeitig
-  // mit dem Drone-Layer summieren. Verhindert das hörbare Clipping/Übersteuern ("Stecker
-  // reinstecken"-Knacksen), das ohne Limiter bei dichten Feuerwerk-Bursts auftrat.
   _limiter=_audioCtx.createDynamicsCompressor();
   _limiter.threshold.value=-6; _limiter.knee.value=6; _limiter.ratio.value=14;
   _limiter.attack.value=0.003; _limiter.release.value=0.18;
@@ -1264,12 +1221,8 @@ function _initAudio(){
   _filterNode=_audioCtx.createBiquadFilter(); _filterNode.type='lowpass';
   _filterNode.frequency.value=500; _filterNode.Q.value=1.1;
   _filterNode.connect(dryG); _filterNode.connect(dly);
-  // High-Bus: UMGEHT den Lowpass - sonst killt die energie-getrackte Cutoff (oft 180-500Hz)
-  // jede Helligkeit im Mix. Trägt Pad/hohe Noten/Sparkle.
   _highBus=_audioCtx.createGain(); _highBus.gain.value=1;
   _highBus.connect(dryG); _highBus.connect(dly);
-  // FX-Bus: für Feuerwerk-Booms, ebenfalls ungefiltert, damit der Sub-Thump unabhängig von
-  // der aktuellen Energie-Cutoff-Automation immer voll durchkommt.
   _fxBus=_audioCtx.createGain(); _fxBus.gain.value=1;
   _fxBus.connect(dryG); _fxBus.connect(dly);
 
@@ -1283,9 +1236,6 @@ function _initAudio(){
   const o3=_audioCtx.createOscillator(); o3.type='triangle'; o3.frequency.value=110.3;
   const g3=_audioCtx.createGain(); g3.gain.value=0.08; o3.connect(g3); g3.connect(_filterNode); o3.start();
 
-  // Mid/High-Pad: zwei langsam "atmende" Lagen via sample-genauem LFO (Oszillator moduliert
-  // direkt den Gain-Wert) statt JS-Timing - macht aus dem Drone eine Komposition, die sich
-  // über die Zeit bewegt, statt einem einzigen durchgehenden Ton.
   const o4=_audioCtx.createOscillator(); o4.type='sine'; o4.frequency.value=220;
   const g4=_audioCtx.createGain(); g4.gain.value=0.05; o4.connect(g4); g4.connect(_highBus); o4.start();
   const lfo1=_audioCtx.createOscillator(); lfo1.type='sine'; lfo1.frequency.value=0.045;
@@ -1300,10 +1250,6 @@ function _initAudio(){
 }
 function playMusicNote(strength){
   if(!_audioCtx||!_musicOn) return;
-  // strength: optional 0..1, derived from firework click strength. Stärkere Klicks
-  // -> eine Oktave höher + etwas lauter, bleibt aber im ruhigen/mystischen Rahmen.
-  // Mischung aus tiefen (Low-Bus) und hohen (High-Bus) Ambient-Noten statt nur eine Lage,
-  // damit es sich wie eine Komposition aus verschiedenen Tönen anhört.
   const s=strength==null?0:Math.max(0,Math.min(1,strength));
   const high=Math.random()<0.55;
   const octave=high?(s>0.66?4:2):(s>0.66?2:1);
@@ -1334,9 +1280,6 @@ function playSparkle(){
   }
 }
 function playFireworkBoom(strength){
-  // "Dumpfes Platzen": Sub-Bass-Thump (Pitch-Drop) + gefilterter Noise-Burst (Schockwelle,
-  // hoch->tief gewedelt) + kurzer metallischer Ring-Oberton ("Platte"-Echo). Ersetzt die
-  // bisherige saubere Sinus-Note, die nicht nach einer Explosion klang.
   if(!_audioCtx||!_musicOn) return;
   const s=strength==null?0:Math.max(0,Math.min(1,strength));
   const t=_audioCtx.currentTime;
@@ -1373,8 +1316,6 @@ function _scheduleNote(){
 }
 function _scheduleSparkle(){
   clearTimeout(_sparkleTimer);
-  // Mehr Partikel-Energie -> dichtere Sparkle-Einsätze, damit sich der Glitzer-Layer
-  // tatsächlich an der Partikelströmung orientiert statt nur den Lowpass zu modulieren.
   const density=Math.max(0,1-Math.min(1,_energyAvg*1.5));
   const base=2200+density*3500;
   _sparkleTimer=setTimeout(()=>{if(_musicOn){playSparkle();_scheduleSparkle();}},base+Math.random()*1800);
@@ -1459,27 +1400,9 @@ function fmtFn(name){
 const SLIMIT=11,SLIM2=SLIMIT*SLIMIT;
 let time=0;
 
-// ── Kraft-Cutoff: jenseits dieser Distanz ist mag=stärke/(d2+softening) visuell nicht mehr
-// wahrnehmbar (≤ FORCE_EPS px/frame²) → sqrt()+Kraftberechnung pro Partikel überspringen.
-// Größter Hebel bei mehreren simultanen Kraftquellen (Komet ×8 + Auto-Klick + Feuerwerk),
-// da diese bisher jede COUNT-mal/Frame ungeachtet der Distanz ein sqrt() ausgeführt haben.
 const FORCE_EPS = 0.02;
 function _forceCutoffR2(strength, softening){ return strength>0 ? Math.max(0, strength/FORCE_EPS - softening) : 0; }
 
-// GPGPU: kein Performance-Governor mehr nötig — die GPU aktualisiert jeden Frame ALLE Partikel
-// in der State-Textur (siehe animate()), unabhängig von S.count. Kein Staffelungsfaktor (physK)
-// wie im CPU-Original, da die GPU dafür genug Spielraum hat (siehe PR-Benchmark-Ergebnisse).
-
-// ── Adaptive Partikelanzahl-Kalibrierung ─────────────────────────────────
-// Tastet S.count beim Start in COUNT_CALIB_STEP-Schritten von COUNT_CALIB_START nach oben,
-// solange die FPS nahe 60 bleiben — findet so automatisch die für die jeweilige Hardware
-// höchstmögliche Partikelzahl, statt eines für alle Geräte fest verdrahteten Werts.
-// Ziel: durchgehend ≥50fps, die 10%-Lows nicht darunter. Erlischt dauerhaft, sobald S.count
-// per Nutzeraktion verändert wird (Slider, Preset, Import, Surprise Me) — siehe _countCalibStop().
-//
-// Misst bewusst die rohe, ungeglättete Pro-Frame-FPS (instFps) statt der geglätteten _fps-EMA:
-// ein EMA würde kurze Ruckler genau wegmitteln, also die Sache verschleiern, die hier erkannt
-// werden soll.
 function _countCalibStop(){
   _countCalib.active = false;
   // Nutzeraktion → sofort auf den (neuen) S.count springen, kein Einblenden mehr
@@ -1491,11 +1414,6 @@ function _syncCountUI(){
   if (vl) vl.textContent = fi(S.count);
 }
 
-// ── GPGPU Force-Liste ────────────────────────────────────────────────────
-// Klick/Auto-Klick/Feuerwerk/Komet-Pool werden zu einem festen Uniform-Array
-// zusammengefasst (max. 11 Slots: 1+1+1+8), statt wie im CPU-Original einzeln
-// im Partikel-Loop abgefragt zu werden — der Physik-Shader iteriert einmal
-// über uForceCount Einträge pro Partikel/Frame.
 const MAX_FORCES = 11;
 const _forcesBuf = new Float32Array(MAX_FORCES * 4);
 const _cursorRepelBuf = new Float32Array(4);
@@ -1561,8 +1479,6 @@ function _bindComputeUniforms(loc, textOn, textGS, spdScale, now, rowFrac) {
   gl.uniform4fv(loc.uForces, _forcesBuf);
   gl.uniform1i(loc.uForceCount, _forceCount);
   gl.uniform4fv(loc.uCursorRepel, _cursorRepelBuf);
-  // Mit Modulo gewrappt, damit der Seed bei sehr langer Laufzeit (Stunden) nicht unbegrenzt
-  // wächst — auch der neue Hash bleibt am genauesten bei eher kleinen Eingabe-Größenordnungen.
   gl.uniform1f(loc.uRespawnSeed, (now*0.001 + time*0.731) % 1000000.0);
   gl.uniform1f(loc.uLife, S.life);
   gl.uniform1f(loc.uRowFrac, rowFrac);
@@ -1583,18 +1499,12 @@ function _tickCountCalibrator(now, instFps){
     // Noch Spielraum (nicht deutlich unter 60, 10%-Lows über 50) → weiter hochtasten
     _countCalib.fails = 0;
     if (S.count >= COUNT_CALIB_MAX) { _countCalibStop(); return; }
-    // Neu hinzukommende Partikel über COUNT_RAMP_DUR weich einblenden statt sie alle im selben
-    // Frame auftauchen zu lassen (siehe _countRamp-Kommentar oben) — _effCountNow(now) statt
-    // S.count, falls schon eine vorherige Erhöhung noch mitten im Einblenden ist.
     _countRamp.from = _effCountNow(now);
     _countRamp.to = Math.min(COUNT_CALIB_MAX, S.count + COUNT_CALIB_STEP);
     _countRamp.start = now;
     S.count = _countRamp.to;
     _syncCountUI();
   } else {
-    // Fenster nicht bestanden — evtl. nur ein kurzzeitiger Hänger (z.B. Tab-Wechsel, GC-Pause).
-    // Erst nach COUNT_CALIB_MAX_FAILS aufeinanderfolgenden Fehlversuchen auf dieser Stufe wird
-    // wirklich zurückgerudert — die höhere Stufe bekommt also mehrere Chancen, sich zu bestätigen.
     _countCalib.fails++;
     if (_countCalib.fails < COUNT_CALIB_MAX_FAILS) return;
     S.count = Math.max(COUNT_CALIB_START, S.count - COUNT_CALIB_STEP);
@@ -1633,14 +1543,6 @@ function animate() {
   const textGS = S.textGravStr * 0.001; // scale: slider 200 → force 0.2 px/frame²
   const spdScale = S.speed*.8;
 
-  // Nur so viele Texel-Zeilen wie für S.count tatsächlich gebraucht werden neu berechnen
-  // (Partikel-Index → Texel ist row-major, siehe uvData in initWebGL()) — entkoppelt die
-  // Pro-Frame-GPU-Kosten von MAX (der reinen Textur-Kapazität) und macht sie wieder von
-  // S.count abhängig, wie im CPU-Original. Sonst würde jede MAX-Erhöhung die Rechenlast für
-  // ALLE Nutzer erhöhen, unabhängig von der gewählten Partikelanzahl.
-  // _effCountNow() statt S.count direkt: blendet automatische Kalibrator-Erhöhungen weich über
-  // COUNT_RAMP_DUR ein (siehe _countRamp); bei Nutzeraktionen (Slider/Preset/Import/Surprise Me)
-  // ist die Rampe bereits über _countCalibStop() auf den neuen Wert gesnapped, reagiert also sofort.
   const drawCount = Math.min(Math.round(_effCountNow(now)), MAX);
   const rowsNeeded = Math.min(TEX_DIM, Math.max(1, Math.ceil(drawCount / TEX_DIM)));
   const rowFrac = rowsNeeded / TEX_DIM;
@@ -1784,8 +1686,6 @@ function _makeSampledTexture(linear){
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-// Einzelnes Float32 → Half-Float-Bitmuster (für den seltenen Fall, dass die GPU
-// nur in Half-Float-Texturen rendern kann, siehe STATE_GLTYPE-Fallback unten).
 function _f32ToF16(val){
   _f16Buf32[0] = val;
   const x = _f16Buf32View[0];
@@ -1799,15 +1699,7 @@ function _f32ToF16(val){
 const _f16Buf32 = new Float32Array(1);
 const _f16Buf32View = new Uint32Array(_f16Buf32.buffer);
 
-// Gemeinsame Compute-Logik für Lifecycle- und Physik-Pass — als String einmal
-// definiert und in beide Fragment-Shader eingebettet, damit beide Passes
-// garantiert identische Physik-/Respawn-Entscheidungen treffen (keine Divergenz).
 const computeStepGLSL = `
-// Bewusst ohne sin(): GPU-sin()-Implementierungen (v.a. ANGLE/D3D, manche Mobile-GPUs) verlieren
-// für große Argumente massiv an Genauigkeit, und dot(uv*1000+uRespawnSeed, vec2(127.1,311.7))
-// erzeugt genau solche großen Argumente — das Ergebnis kollabiert dann auf eine Handvoll fester
-// Werte, was sich als "Partikel spawnen immer an denselben paar Stellen" zeigt. fract() direkt
-// nach der Multiplikation hält alle Zwischenwerte klein, unabhängig von der Eingabe-Größenordnung.
 float _hash(vec2 p){
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
   p3 += dot(p3, p3.yzx + 33.33);
@@ -1887,11 +1779,6 @@ attribute vec2 aPos;
 varying vec2 vUv;
 void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }`;
 
-// Wie quadVS, aber für die Lifecycle-/Physik-Passes: uRowFrac (= benötigte Texel-Zeilen / TEX_DIM)
-// staucht vUv.y auf den tatsächlich aktiven Bereich der Zustands-Textur, passend zum mit
-// gl.viewport(0,0,TEX_DIM,rowsNeeded) verkleinerten Render-Ziel in animate() — so bleibt die
-// 1:1-Zuordnung Ziel-Pixel-Zeile ↔ Quell-Texel-Zeile erhalten, statt den vollen 0..1-UV-Bereich
-// in das kleinere Viewport zu stauchen (was Zeilen vertikal verzerrt/vermischt hätte).
 const computeQuadVS = `
 attribute vec2 aPos;
 uniform float uRowFrac;
@@ -2044,9 +1931,6 @@ function initWebGL() {
   TEX_DIM = Math.ceil(Math.sqrt(MAX));
   const texels = TEX_DIM * TEX_DIM;
 
-  // Saat-Daten: identische Reihenfolge/Formel wie spawnParticle(i,true) im CPU-Original,
-  // bewusst VOR resize() aufgerufen (siehe Startup unten) → W=H=0 hier, Partikel starten
-  // alle bei (0,0) und verteilen sich durch ihr zufälliges Alter natürlich über den Bildschirm.
   const seedA = new Float32Array(texels * 4); // pos.xy, vel.zw
   const seedB = new Float32Array(texels * 4); // age, maxAge, brightness, spare
   for (let i = 0; i < MAX; i++) {
@@ -2109,14 +1993,9 @@ function initWebGL() {
 }
 
 // ─── Startup ───────────────────────────────────────────────────────────
-// initWebGL() bewusst VOR resize(): repliziert die Reihenfolge aus particle-flow-v5.html
-// (Partikel-Saat lief dort ebenfalls vor dem ersten resize(), siehe Kommentar in initWebGL()).
 initWebGL(); resize(); window.addEventListener('resize',resize); updateField(0); _uploadFlowTex(); animate();
 setTimeout(()=>{document.getElementById('hint').style.opacity='0';},5000);
 
-// ═══════════════════════════════════════════════════════════════════════
-//  UI
-// ═══════════════════════════════════════════════════════════════════════
 
 const panel=document.getElementById('panel');
 // HUD-Buttons sitzen sonst genau über dem Panel-Header (Import/Export/Schließen) und blockieren dessen Klicks
@@ -2609,9 +2488,6 @@ function _computeViewportTextSize(text, weight, targetWidthPhysical){
   const physicalSize = w > 0 ? refSize * (targetWidthPhysical / w) : refSize;
   return Math.round(physicalSize / _dpr);
 }
-// Hält S.textSize (logische px, von buildTextField verwendet) synchron zu S.textSizePct (% der
-// Viewport-Breite) — neu berechnet bei Resize, Inhalts-/Gewichts-/Prozent-Änderung, damit der Text
-// auf jedem Viewport (Desktop wie Mobile, nach Rotation/Resize) automatisch die Zielbreite trifft.
 function _syncTextSize(){
   if (!W) return;
   S.textSize = _computeViewportTextSize(S.textContent, S.textWeight, W * (S.textSizePct/100));
@@ -2624,8 +2500,6 @@ document.getElementById('btn-preset-phone').addEventListener('click',()=>{
   _countCalibStop(); // Preset legt eine eigene Partikelanzahl fest → Kalibrierung erlischt
   buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
 });
-// Mobile-Preset: basiert auf dem Desktop-Preset, aber mit reduzierter Partikelanzahl. Die Textbreite
-// (S.textSizePct) ist bereits viewport-relativ und passt sich automatisch an jede Bildschirmgröße an.
 document.getElementById('btn-preset-mobile').addEventListener('click',()=>{
   const data = {
     ...DESKTOP_PRESET,
