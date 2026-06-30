@@ -4,8 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Partikel-Strömung</title>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@100..900&display=swap" rel="stylesheet">
 <style>
+@font-face {
+  font-family: 'Figtree';
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('fonts/figtree-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Figtree';
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('fonts/figtree-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #07070f; overflow: hidden; font-family: 'Figtree', system-ui, sans-serif; }
 canvas { display: block; position: fixed; inset: 0; }
@@ -125,6 +140,19 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
 .cstop-add:hover { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.6); }
 
 #hint { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.13); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; pointer-events: none; transition: opacity 2.5s; white-space: nowrap; z-index: 50; }
+
+/* ── Impressum ──────────────────────────────────────────────────────── */
+#legal-link { position: fixed; bottom: 8px; right: 10px; color: rgba(255,255,255,0.12); font-size: 9px; letter-spacing: .03em; cursor: pointer; z-index: 50; transition: color .2s; text-decoration: none; }
+#legal-link:hover { color: rgba(255,255,255,0.4); }
+#legal-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none; align-items: center; justify-content: center; z-index: 400; }
+#legal-modal.open { display: flex; }
+#legal-modal .legal-box { background: rgba(7,7,16,0.97); backdrop-filter: blur(28px); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; max-width: 440px; width: 90%; max-height: 80vh; overflow-y: auto; padding: 24px; color: rgba(255,255,255,0.6); font-size: 13px; line-height: 1.6; }
+#legal-modal h2 { font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 14px; font-weight: 600; }
+#legal-modal h3 { font-size: 12px; color: rgba(255,255,255,0.7); margin: 16px 0 6px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+#legal-modal p { margin-bottom: 4px; }
+#legal-modal .legal-close { display: block; margin-top: 18px; padding: 9px; width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 7px; color: rgba(255,255,255,0.6); font-size: 12px; font-family: inherit; cursor: pointer; transition: all .2s; }
+#legal-modal .legal-close:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
+#legal-modal .legal-placeholder { color: rgba(246,180,59,.7); }
 
 /* ── Farb-Animation Schrittliste ─────────────────────────────────────── */
 .col-step { display:flex; align-items:center; gap:8px; padding:7px 9px; background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.06); border-radius:7px; margin-bottom:7px; }
@@ -527,6 +555,25 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
 </div>
 
 <div id="hint">Linksklick halten · Gravitation &nbsp;—&nbsp; Rechtsklick · Abstoßung</div>
+
+<a id="legal-link">Impressum</a>
+<div id="legal-modal">
+  <div class="legal-box">
+    <h2>Impressum</h2>
+    <p>Angaben gemäß § 5 DDG</p>
+    <h3>Verantwortlich für den Inhalt</h3>
+    <p class="legal-placeholder">[Vor- und Nachname]</p>
+    <p class="legal-placeholder">[Straße und Hausnummer]</p>
+    <p class="legal-placeholder">[PLZ und Ort]</p>
+    <h3>Kontakt</h3>
+    <p>E-Mail: rosenbergerjoshua@web.de</p>
+    <h3>Hinweis</h3>
+    <p>Dies ist eine private, nicht-kommerzielle Webseite ohne Werbung oder Verkauf von Waren/Dienstleistungen.</p>
+    <h3>Datenschutz</h3>
+    <p>Diese Seite verwendet keine Cookies, kein Tracking und keine Analyse-Tools. Es werden keine Daten an Dritte (z.B. Google) übertragen — alle Schriftarten und Ressourcen werden lokal vom eigenen Server geladen. Einstellungen werden ausschließlich lokal im Browser gespeichert (Export/Import als Datei) und nicht an einen Server gesendet.</p>
+    <button class="legal-close" id="legal-close">Schließen</button>
+  </div>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════
@@ -1398,6 +1445,11 @@ document.getElementById('btn-settings').addEventListener('click',e=>{e.stopPropa
 document.getElementById('btn-close').addEventListener('click',()=>setPanelOpen(false));
 document.addEventListener('click',e=>{if(!panel.contains(e.target)&&e.target.id!=='btn-settings'&&e.target.id!=='file-import')setPanelOpen(false);});
 panel.addEventListener('click',e=>e.stopPropagation());
+
+const legalModal=document.getElementById('legal-modal');
+document.getElementById('legal-link').addEventListener('click',e=>{e.stopPropagation();legalModal.classList.add('open');});
+document.getElementById('legal-close').addEventListener('click',e=>{e.stopPropagation();legalModal.classList.remove('open');});
+legalModal.addEventListener('click',e=>{if(e.target===legalModal)legalModal.classList.remove('open');});
 
 // Format helpers
 const f1=n=>n.toFixed(1),f2=n=>n.toFixed(2),f3=n=>n.toFixed(3);
