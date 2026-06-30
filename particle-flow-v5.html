@@ -216,8 +216,9 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
     <div class="sec">
       <div class="sec-lbl">Schnellstart</div>
       <div class="btn-row" style="margin-bottom:8px">
-        <button class="preset-btn" id="btn-preset-pc">My PC was expensive<br><span style="color:rgba(255,255,255,0.25)">180k Partikel</span></button>
+        <button class="preset-btn" id="btn-preset-pc">My PC was expensive<br><span style="color:rgba(255,255,255,0.25)">98k Partikel</span></button>
         <button class="preset-btn" id="btn-preset-phone">My Phone was expensive<br><span style="color:rgba(255,255,255,0.25)">140k Partikel</span></button>
+        <button class="preset-btn" id="btn-preset-mobile">Mobile<br><span style="color:rgba(255,255,255,0.25)">35k Partikel</span></button>
       </div>
       <button class="surprise-btn" id="btn-surprise">✦ Surprise Me</button>
     </div>
@@ -2070,13 +2071,71 @@ document.addEventListener('fullscreenchange',()=>{
 document.getElementById('btn-music').addEventListener('click',e=>{e.stopPropagation();toggleMusic();});
 
 // ── Performance Presets ───────────────────────────────────────────────────
+// Desktop-Preset: optimiert für große Bildschirme (eigenständige Werte, DEFAULTS bleiben unberührt)
+const DESKTOP_PRESET = {
+  count: 98500, life: 250, alpha: 1.5, lw: 6,
+  speed: 0.6397797844673414, turb: 1.9716886726758163, tscale: 13.2, damp: 0.962,
+  trail: 0.005, additive: true, gravity: 51500, scheme: 'custom',
+  customStops: [{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}], customSat: 80,
+  turbAnim: true, turbMin: 1.6, turbMax: 10, turbDur: 26,
+  speedAnim: true, speedMin: 0.05, speedMax: 0.64, speedDur: 40,
+  alphaAnim: false, alphaMin: 0.05, alphaMax: 1.5, alphaDur: 6,
+  trailAnim: false, trailMin: 0.01, trailMax: 0.15, trailDur: 12,
+  tscaleAnim: false, tscaleMin: 0, tscaleMax: 6, tscaleDur: 15,
+  textGravOn: true, textContent: 'Joshiboy95', textSize: 360, textWeight: 400,
+  textGravStr: 555.9299109903421, textGravAnim: true, textGravMin: 0, textGravMax: 1110,
+  textGravDur: 15, textGravPause: 3,
+  colorAnimOn: true, colorAnimHold: 19.5, colorAnimTrans: 5.7,
+  colorAnimList: [
+    {scheme:'ember'},
+    {scheme:'custom',customStops:[{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}],customSat:80},
+    {scheme:'neon'},
+    {scheme:'galaxy'},
+  ],
+  autoClick: true, autoInterval: 9, autoDuration: 2.3, autoGravity: 40000,
+  cursorRepel: true, cursorRepelStr: 8000, fbm: true,
+  fwksOn: true, fwksMinClicks: 3, fwksMaxClicks: 7, fwksMinStrRaw: 130, fwksMaxStrRaw: 250,
+  fwksMinInterval: 50, fwksMaxInterval: 200, fwksClickDur: 0.4, fwksMinPause: 11, fwksMaxPause: 23,
+  fwksBurstOn: true,
+  cometOn: true, cometIntensity: 'gauss', cometStrRaw: 265, cometDuration: 1, cometInterval: 8,
+  cometShowerOn: true, cometShowerMinCount: 1, cometShowerMaxCount: 4,
+  cometShowerMinGap: 100, cometShowerMaxGap: 500, cometShowerMinPause: 7, cometShowerMaxPause: 18,
+};
+// Wendet ein Preset-Objekt auf S an (gleiches Muster wie der JSON-Import)
+function _applyPreset(data){
+  Object.assign(S, data);
+  if(data.customStops) S.customStops=data.customStops.map(s=>({...s}));
+  if(data.colorAnimList) S.colorAnimList=data.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})}));
+  applyAllUI(); buildPalette(); rebuildTrail(); clearCanvas();
+}
+// Errechnet die Schriftgröße (logische px), damit ein Wort genau in targetWidthPhysical (physische px) passt
+function _computeViewportTextSize(text, weight, targetWidthPhysical){
+  const refSize = 100;
+  _tx2.font = `${weight} ${refSize}px "Figtree", system-ui, sans-serif`;
+  const w = _tx2.measureText(text || ' ').width;
+  const physicalSize = w > 0 ? refSize * (targetWidthPhysical / w) : refSize;
+  return Math.round(physicalSize / _dpr);
+}
 document.getElementById('btn-preset-pc').addEventListener('click',()=>{
-  S.count=180000; S.life=450; S.alpha=1.5; S.speed=0.22; S.turb=4.2; S.trail=0.055; S.additive=true;
-  buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
+  _applyPreset(DESKTOP_PRESET);
 });
 document.getElementById('btn-preset-phone').addEventListener('click',()=>{
   S.count=140000; S.life=380; S.alpha=1.2; S.speed=0.2; S.turb=3.5; S.trail=0.08; S.additive=true;
   buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
+});
+// Mobile-Preset: basiert auf dem Desktop-Preset, aber mit reduzierter Partikelanzahl und
+// einer Schriftgröße, die sich nach der Viewport-Breite richtet (mit Padding) statt einem festen px-Wert
+document.getElementById('btn-preset-mobile').addEventListener('click',()=>{
+  const data = {
+    ...DESKTOP_PRESET,
+    customStops: DESKTOP_PRESET.customStops.map(s=>({...s})),
+    colorAnimList: DESKTOP_PRESET.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})})),
+  };
+  data.count = 35000;
+  const paddingFrac = 0.08; // 8% Padding pro Seite
+  const targetWidth = W * (1 - 2*paddingFrac);
+  data.textSize = _computeViewportTextSize(data.textContent, data.textWeight, targetWidth);
+  _applyPreset(data);
 });
 
 // ── Surprise Me ───────────────────────────────────────────────────────────
