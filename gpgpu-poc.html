@@ -917,8 +917,16 @@ function buildTextField() {
             }
           }
         }
-        textFieldTX[r*TC+c] = bD<1e9 ? bX : 0;
-        textFieldTY[r*TC+c] = bD<1e9 ? bY : 0;
+        // Sanfter Abfall statt hartem Cutoff an der SR-Grenze: volle Stärke nah am
+        // Text, gegen 0 auslaufend zum Suchradius hin (smoothstep), damit am Rand
+        // kein sichtbarer "Kasten" durch den abrupten Sprung auf 0 entsteht.
+        let falloff = 0;
+        if (bD < 1e9) {
+          const t = Math.min(1, Math.sqrt(bD) / SR);
+          falloff = 1 - t*t*(3 - 2*t);
+        }
+        textFieldTX[r*TC+c] = bX * falloff;
+        textFieldTY[r*TC+c] = bY * falloff;
       }
     }
   }
