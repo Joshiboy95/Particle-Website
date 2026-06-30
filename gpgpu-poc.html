@@ -746,6 +746,22 @@ const COUNT_CALIB_MAX_FAILS = 3; // so viele Fehlversuche in Folge auf derselben
 let _countCalib = { active: true, windowStart: 0, samples: [], fails: 0 };
 S.count = COUNT_CALIB_START;
 
+// Wenn der Kalibrator S.count erhöht, sollen die neu hinzukommenden Partikel nicht alle
+// schlagartig im selben Frame auftauchen (sie starten ohnehin alle an Position (0,0), siehe
+// initWebGL()-Seed-Kommentar — ein plötzlicher Sprung um COUNT_CALIB_STEP wirkt dadurch wie ein
+// kleiner Partikel-"Ausbruch" aus einer Ecke). _countRamp blendet die für Compute/Render aktive
+// Partikelzahl stattdessen über COUNT_RAMP_DUR ms weich von "from" auf "to" ein/aus. Nur für
+// automatische Kalibrator-Änderungen aktiv — direkte Nutzeraktionen (Slider, Presets, Import,
+// Surprise Me) sollen weiterhin sofort reagieren, siehe _countCalibStop().
+const COUNT_RAMP_DUR = 2000;
+let _countRamp = { from: S.count, to: S.count, start: 0 };
+function _effCountNow(now){
+  if (_countRamp.start === 0) return _countRamp.to;
+  const t = (now - _countRamp.start) / COUNT_RAMP_DUR;
+  if (t >= 1) { _countRamp.start = 0; return _countRamp.to; }
+  return _countRamp.from + (_countRamp.to - _countRamp.from) * t;
+}
+
 // ─── Animation parameter config ────────────────────────────────────────
 // Each entry drives the generic tick + UI system
 const ANIM_CFG = [
@@ -1459,7 +1475,11 @@ function _forceCutoffR2(strength, softening){ return strength>0 ? Math.max(0, st
 // Misst bewusst die rohe, ungeglättete Pro-Frame-FPS (instFps) statt der geglätteten _fps-EMA:
 // ein EMA würde kurze Ruckler genau wegmitteln, also die Sache verschleiern, die hier erkannt
 // werden soll.
-function _countCalibStop(){ _countCalib.active = false; }
+function _countCalibStop(){
+  _countCalib.active = false;
+  // Nutzeraktion → sofort auf den (neuen) S.count springen, kein Einblenden mehr
+  _countRamp.from = _countRamp.to = S.count; _countRamp.start = 0;
+}
 function _syncCountUI(){
   const sl=document.getElementById('s-count'), vl=document.getElementById('v-count');
   if (sl) sl.value = S.count;
@@ -1558,7 +1578,13 @@ function _tickCountCalibrator(now, instFps){
     // Noch Spielraum (nicht deutlich unter 60, 10%-Lows über 50) → weiter hochtasten
     _countCalib.fails = 0;
     if (S.count >= COUNT_CALIB_MAX) { _countCalibStop(); return; }
-    S.count = Math.min(COUNT_CALIB_MAX, S.count + COUNT_CALIB_STEP);
+    // Neu hinzukommende Partikel über COUNT_RAMP_DUR weich einblenden statt sie alle im selben
+    // Frame auftauchen zu lassen (siehe _countRamp-Kommentar oben) — _effCountNow(now) statt
+    // S.count, falls schon eine vorherige Erhöhung noch mitten im Einblenden ist.
+    _countRamp.from = _effCountNow(now);
+    _countRamp.to = Math.min(COUNT_CALIB_MAX, S.count + COUNT_CALIB_STEP);
+    _countRamp.start = now;
+    S.count = _countRamp.to;
     _syncCountUI();
   } else {
     // Fenster nicht bestanden — evtl. nur ein kurzzeitiger Hänger (z.B. Tab-Wechsel, GC-Pause).
@@ -1607,7 +1633,10 @@ function animate() {
   // Pro-Frame-GPU-Kosten von MAX (der reinen Textur-Kapazität) und macht sie wieder von
   // S.count abhängig, wie im CPU-Original. Sonst würde jede MAX-Erhöhung die Rechenlast für
   // ALLE Nutzer erhöhen, unabhängig von der gewählten Partikelanzahl.
-  const drawCount = Math.min(S.count, MAX);
+  // _effCountNow() statt S.count direkt: blendet automatische Kalibrator-Erhöhungen weich über
+  // COUNT_RAMP_DUR ein (siehe _countRamp); bei Nutzeraktionen (Slider/Preset/Import/Surprise Me)
+  // ist die Rampe bereits über _countCalibStop() auf den neuen Wert gesnapped, reagiert also sofort.
+  const drawCount = Math.min(Math.round(_effCountNow(now)), MAX);
   const rowsNeeded = Math.min(TEX_DIM, Math.max(1, Math.ceil(drawCount / TEX_DIM)));
   const rowFrac = rowsNeeded / TEX_DIM;
 
