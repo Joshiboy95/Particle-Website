@@ -35,7 +35,9 @@ The entire application lives in `particle-flow-v5.html`. There is no build step,
 
 - **Typed Arrays** for all particle data (`Float32Array`, `Uint8Array`)
 - **MAX = 200,000** particles pre-allocated at startup
-- **Staggered Physics (K=2):** only 50% of particles updated per frame (alternating halves). Invisible on smooth Curl-Noise fields.
+- **Staggered Physics (adaptive `physK`, 2–4):** only `1/physK` of particles updated per frame, alternating segments (`segLen = Math.ceil(COUNT/physK)`, segment index = `time % physK`). Starts at `physK=2` (the original 50%-per-frame split). Invisible on smooth Curl-Noise fields at K=2; K=3/4 trade a bit more of this same invisible jitter for headroom under load (see Performance Governor below and Known Limitations).
+- **Force cutoff radius (`FORCE_EPS`):** every point-force (mouse click, auto-click, fireworks, comet pool) computes, once per frame, the squared distance beyond which its contribution (`mag = strength/(d²+softening)`) drops below `FORCE_EPS = 0.02 px/frame²` — imperceptible regardless of accumulated frames — and skips the `sqrt()`+force computation for particles beyond it. At default force strengths this radius covers most/all of a typical viewport (≈900–1900px), so it only meaningfully engages either for genuinely distant particles or while a force's intensity curve (e.g. comet gauss ramp) is naturally weak — i.e. exactly where the force's true reach was already short. Cursor passive repel keeps its existing fixed `_crRad2` (180px) via `Math.min(_crRad2, cutoff)` since that radius is already tighter — unchanged behaviour there.
+- **Adaptive performance governor:** `_tickPerfGovernor(now)` adjusts `physK` (2↔4) against the smoothed `_fps` EMA, gated by a 1.5s hysteresis window (`_physKLastChange`) so it doesn't thrash: escalates (more staggering, less physics work) when `_fps < 54`, relaxes back down when `_fps > 58.5`. This is what makes "constant 60fps" an actual runtime guarantee across very different hardware (desktop GPU vs. phone) rather than a hand-tuned fixed value — the perf-display readout (`· Physik 1/${physK}`) shows the current factor live.
 - **VBO layout:** Interleaved `[x, y, r, g, b, a] × 2` vertices per particle = 12 floats/particle = 24 bytes/vertex
 
 ### Flow Field
@@ -171,6 +173,8 @@ const ANIM_CFG = [
 | `buildTextField()` | Builds text gravity field (256×180); only called when `_textDirty=true` |
 | `updateField(t)` | Computes curl-noise flow field (64×45); every 3 frames |
 | `tickAnimations(now, doUI)` | Cosine pendulum for all `ANIM_CFG` params; supports `pauseKey` |
+| `_tickPerfGovernor(now)` | Adjusts `physK` (2–4) against the `_fps` EMA with 1.5s hysteresis; called every frame from `animate()` before the staggering math |
+| `_forceCutoffR2(strength, softening)` | Returns the squared distance beyond which a point-force's contribution drops below `FORCE_EPS`; recomputed per active force per frame |
 | `tickColorAnim(now, doUI)` | Colour animation: hold→transition→hold with HSL interpolation |
 | `applyAllUI()` | Syncs ALL UI elements from `S`; called on import/reset/startup |
 | `rebuildTrail()` | Caches trail string + updates WebGL quad VBO |
@@ -201,6 +205,7 @@ Blend modes:    - Trail fade:        SRC_ALPHA, ONE_MINUS_SRC_ALPHA
 - WebGL: 1 draw call instead of 200k Canvas2D bridge calls
 - Staggered physics K=2: ~47% less physics work per frame
 - Effective capacity: ~200k particles at 60 fps
+- Adaptive `physK` (2–4) + force-cutoff radius push this further under heavy simultaneous-force load (e.g. Kometenschauer + Feuerwerk + Auto-Klick at once) while keeping the common case at the original K=2 quality level — see Architecture → Particle Physics
 
 ---
 
@@ -341,7 +346,7 @@ Same burst/pause principle as Fireworks, but spawning comet-tails instead of cli
 2. **Colour animation overwrites `S.scheme`** — switching between steps updates the global colour scheme.
 3. **`S.colorAnimList` items without `customStops`** always use the current `S.customStops` when `scheme='custom'`.
 4. **Text gravity DPI:** font size is multiplied by DPR, so `textSize=45` at DPR=3 renders at 135px physical pixels.
-5. **Staggered physics** can show minimal jitter at very high speeds (`speed > 3`).
+5. **Staggered physics** can show minimal jitter at very high speeds (`speed > 3`); the adaptive performance governor can push `physK` up to 4 under sustained load, which proportionally increases this same jitter (still bounded — particles never freeze for more than 3 extra frames).
 
 ---
 
