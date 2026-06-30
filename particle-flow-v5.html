@@ -487,6 +487,7 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
           <div class="ctrl-hd"><span class="ctrl-name">Klickdauer</span><span class="ctrl-val" id="v-fwks-dur">0.2 s</span></div>
           <input type="range" id="s-fwks-dur" min="0.1" max="3.0" step="0.1" value="0.2">
         </div>
+        <div class="tog-row" style="margin-top:10px"><span class="tog-name">Platzeffekt <span style="color:rgba(255,255,255,0.2);font-size:10px">(anziehen → abstoßen)</span></span><div class="tog" id="t-fwks-burst"></div></div>
         <div style="height:2px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;margin-top:6px">
           <div id="fwks-bar" style="height:100%;width:0%;background:rgba(255,160,40,.55);border-radius:2px"></div>
         </div>
@@ -622,6 +623,7 @@ const DEFAULTS = {
   fwksMinStrRaw: 175, fwksMaxStrRaw: 240, // actual = raw²
   fwksMinInterval: 50, fwksMaxInterval: 200,
   fwksClickDur: 0.2, fwksMinPause: 11, fwksMaxPause: 23,
+  fwksBurstOn: false, // 1. Hälfte der Klickdauer anziehend, 2. Hälfte abstoßend ("Platzeffekt")
 };
 const S = {
   ...DEFAULTS,
@@ -909,7 +911,7 @@ canvas.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];
 canvas.addEventListener('touchend',()=>{input.attract=false;input.onCanvas=false;});
 
 // ─── Fireworks state ───────────────────────────────────────────────────
-const fwks={state:'pause',clicksDone:0,totalClicks:0,nextClickTime:0,nextBurstTime:0,cx:0,cy:0,cEnd:0,cStr:0};
+const fwks={state:'pause',clicksDone:0,totalClicks:0,nextClickTime:0,nextBurstTime:0,cx:0,cy:0,cStart:0,cEnd:0,cStr:0};
 function tickFireworks(now,doUI){
   if(!S.fwksOn) return;
   if(fwks.state==='pause'&&now>=fwks.nextBurstTime){
@@ -924,7 +926,7 @@ function tickFireworks(now,doUI){
       const rawMin=Math.min(S.fwksMinStrRaw,S.fwksMaxStrRaw),rawMax=Math.max(S.fwksMinStrRaw,S.fwksMaxStrRaw);
       const rawR=rawMin+Math.random()*(rawMax-rawMin);
       fwks.cStr=rawR*rawR;
-      fwks.cEnd=now+S.fwksClickDur*1000;
+      fwks.cStart=now; fwks.cEnd=now+S.fwksClickDur*1000;
       const iMin=Math.min(S.fwksMinInterval,S.fwksMaxInterval),iMax=Math.max(S.fwksMinInterval,S.fwksMaxInterval);
       fwks.nextClickTime=now+iMin+Math.random()*(iMax-iMin);
       fwks.clicksDone++;
@@ -1239,6 +1241,8 @@ function animate() {
   const COUNT=S.count,damp=S.damp,spdScale=S.speed*.8,grav=S.gravity,cDrive=S.colorDrive;
   const autoOn=S.autoClick&&autoClick.active,autoGr=S.autoGravity,autoAX=autoClick.x,autoAY=autoClick.y;
   const fwksActive=S.fwksOn&&fwks.state==='burst'&&now<fwks.cEnd;
+  // Platzeffekt: 1. Hälfte der Klickdauer anziehend, 2. Hälfte abstoßend (Vorzeichen-Umkehr)
+  const fwksSign=(fwksActive&&S.fwksBurstOn&&now>=fwks.cStart+(fwks.cEnd-fwks.cStart)*0.5)?-1:1;
   // Text gravity: rebuild field if dirty, then cache lookup scale
   if (_textDirty) { buildTextField(); _textDirty = false; }
   const textOn = _textActive && S.textGravStr > 0;
@@ -1267,7 +1271,7 @@ function animate() {
       if(hasForce){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=grav/(d2+500),s=doAtt?1:-1;pVX[i]+=(dx/d)*mag*s;pVY[i]+=(dy/d)*mag*s;}}
       else if(doPassiveRepel){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1&&d2<_crRad2){const d=Math.sqrt(d2),mag=_crStr/(d2+300);pVX[i]-=(dx/d)*mag;pVY[i]-=(dy/d)*mag;}}
       if(autoOn){const dx=autoAX-pX[i],dy=autoAY-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=autoGr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
-      if(fwksActive){const dx=fwks.cx-pX[i],dy=fwks.cy-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=fwks.cStr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
+      if(fwksActive){const dx=fwks.cx-pX[i],dy=fwks.cy-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=fwks.cStr/(d2+500)*fwksSign;pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
 
       if(textOn){
         const fc=Math.max(0,Math.min((pX[i]/W)*(TC-1),TC-1.001));
@@ -1743,6 +1747,7 @@ function applyAllUI(){
   // Fireworks toggle + body
   const _tfwks=document.getElementById('t-fwks');if(_tfwks)_tfwks.classList.toggle('on',S.fwksOn);
   const _fbody=document.getElementById('fwks-body');if(_fbody)_fbody.style.display=S.fwksOn?'block':'none';
+  const _tfwksBurst=document.getElementById('t-fwks-burst');if(_tfwksBurst)_tfwksBurst.classList.toggle('on',S.fwksBurstOn);
   // Fireworks sliders (range pairs + click dur)
   (()=>{
     function _sv(sid,val){const el=document.getElementById(sid);if(el)el.value=val;}
@@ -1846,6 +1851,8 @@ togFwks.addEventListener('click',()=>{
   fwksBody.style.display=S.fwksOn?'block':'none';
   if(S.fwksOn){fwks.state='pause';fwks.nextBurstTime=performance.now()+1500;}
 });
+const togFwksBurst=document.getElementById('t-fwks-burst');
+togFwksBurst.addEventListener('click',()=>{S.fwksBurstOn=!S.fwksBurstOn;togFwksBurst.classList.toggle('on',S.fwksBurstOn);});
 function _bindRangePair(sidMin,sidMax,vidMin,vidMax,minKey,maxKey,fmt){
   const slMin=document.getElementById(sidMin),slMax=document.getElementById(sidMax);
   const vlMin=document.getElementById(vidMin),vlMax=document.getElementById(vidMax);
