@@ -216,8 +216,8 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
     <div class="sec">
       <div class="sec-lbl">Schnellstart</div>
       <div class="btn-row" style="margin-bottom:8px">
-        <button class="preset-btn" id="btn-preset-pc">My PC was expensive<br><span style="color:rgba(255,255,255,0.25)">98k Partikel</span></button>
-        <button class="preset-btn" id="btn-preset-phone">My Phone was expensive<br><span style="color:rgba(255,255,255,0.25)">140k Partikel</span></button>
+        <button class="preset-btn" id="btn-preset-pc">My PC was expensive<br><span style="color:rgba(255,255,255,0.25)">4 Mio. Partikel</span></button>
+        <button class="preset-btn" id="btn-preset-phone">My Phone was expensive<br><span style="color:rgba(255,255,255,0.25)">1 Mio. Partikel</span></button>
         <button class="preset-btn" id="btn-preset-mobile">Mobile<br><span style="color:rgba(255,255,255,0.25)">35k Partikel</span></button>
       </div>
       <button class="surprise-btn" id="btn-surprise">✦ Surprise Me</button>
@@ -245,7 +245,7 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
       </div>
       <div class="ctrl">
         <div class="ctrl-hd"><span class="ctrl-name">Anzahl</span><span class="ctrl-val" id="v-count">100 000</span></div>
-        <input type="range" id="s-count" min="500" max="200000" step="500" value="100000">
+        <input type="range" id="s-count" min="500" max="4000000" step="1000" value="100000">
       </div>
       <div class="ctrl">
         <div class="ctrl-hd"><span class="ctrl-name">Wirbelstärke</span><span style="display:flex;align-items:center;gap:6px"><button class="ctrl-reset-btn" id="btn-reset-turb" title="Animation zurücksetzen">↺</button><span class="ctrl-val" id="v-turb">5.5</span></span></div>
@@ -329,7 +329,7 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
     <div class="sec">
       <div class="sec-lbl">Partikel – Erweitert</div>
       <div class="ctrl">
-        <div class="ctrl-hd"><span class="ctrl-name">Lebensdauer</span><span class="ctrl-val" id="v-life">700</span></div>
+        <div class="ctrl-hd"><span class="ctrl-name" title="Einheit: Frames, nicht Sekunden. Jeder Partikel erhält beim Start eine zufällige Lebensdauer zwischen 0,5× und 1,5× diesem Wert. Bei 60 Bildern/Sek. entspricht z.B. 700 Frames im Schnitt ≈ 11,7 Sekunden.">Lebensdauer</span><span class="ctrl-val" id="v-life">700 Frames</span></div>
         <input type="range" id="s-life" min="30" max="2000" step="10" value="700">
       </div>
       <div class="ctrl">
@@ -731,9 +731,14 @@ const S = {
   customStops: DEFAULTS.customStops.map(s=>({...s})),
   colorAnimList: DEFAULTS.colorAnimList.map(step=>({...step, ...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})})),
 };
+// GPGPU: Partikelzustand lebt komplett in Float-Texturen (siehe initWebGL()/_texA/_texB).
+// MAX bestimmt nur noch TEX_DIM (die feste Größe der Zustands-Texturen) — keine CPU-Arrays mehr.
+// Muss vor COUNT_CALIB_MAX stehen, da der Kalibrator bis an MAX heran hochtasten darf.
+const MAX=4000000;
+
 // Adaptive Partikelanzahl-Kalibrierung: Start immer bei COUNT_CALIB_START, unabhängig von DEFAULTS.count
 // — der Kalibrator (siehe _tickCountCalibrator) tastet sich von hier selbstständig nach oben.
-const COUNT_CALIB_START = 30000, COUNT_CALIB_STEP = 10000, COUNT_CALIB_MAX = 200000;
+const COUNT_CALIB_START = 100000, COUNT_CALIB_STEP = 50000, COUNT_CALIB_MAX = MAX;
 const COUNT_CALIB_WINDOW = 4000; // ms je Messfenster (auch für die initiale Wartezeit)
 const COUNT_CALIB_MAX_FAILS = 3; // so viele Fehlversuche in Folge auf derselben Stufe, bevor zurückgerudert wird (gibt der höheren Stufe eine Chance, falls es nur ein kurzzeitiger Hänger war)
 let _countCalib = { active: true, windowStart: 0, samples: [], fails: 0 };
@@ -1019,9 +1024,7 @@ function _uploadPaletteTex(){
 }
 
 // ─── Buffers ───────────────────────────────────────────────────────────
-// GPGPU: Partikelzustand lebt komplett in Float-Texturen (siehe initWebGL()/_texA/_texB).
-// MAX bestimmt nur noch TEX_DIM (die feste Größe der Zustands-Texturen) — keine CPU-Arrays mehr.
-const MAX=200000;
+// MAX/TEX_DIM siehe Deklaration weiter oben (vor COUNT_CALIB_MAX).
 
 buildPalette();
 
@@ -1518,7 +1521,7 @@ function _buildForces(now) {
   }
 }
 
-function _bindComputeUniforms(loc, textOn, textGS, spdScale, now) {
+function _bindComputeUniforms(loc, textOn, textGS, spdScale, now, rowFrac) {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, _texA[_curA]); gl.uniform1i(loc.uTexA, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, _texB[_curB]); gl.uniform1i(loc.uTexB, 1);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, _flowTex); gl.uniform1i(loc.uFlowTex, 2);
@@ -1533,6 +1536,7 @@ function _bindComputeUniforms(loc, textOn, textGS, spdScale, now) {
   gl.uniform4fv(loc.uCursorRepel, _cursorRepelBuf);
   gl.uniform1f(loc.uRespawnSeed, now*0.001 + time*0.731);
   gl.uniform1f(loc.uLife, S.life);
+  gl.uniform1f(loc.uRowFrac, rowFrac);
 }
 function _tickCountCalibrator(now, instFps){
   if (!_countCalib.active) return;
@@ -1594,23 +1598,32 @@ function animate() {
   const textGS = S.textGravStr * 0.001; // scale: slider 200 → force 0.2 px/frame²
   const spdScale = S.speed*.8;
 
-  // ── GPGPU Lifecycle- + Physik-Pass (alle Partikel, jeden Frame, kein Staffeln mehr) ──
+  // Nur so viele Texel-Zeilen wie für S.count tatsächlich gebraucht werden neu berechnen
+  // (Partikel-Index → Texel ist row-major, siehe uvData in initWebGL()) — entkoppelt die
+  // Pro-Frame-GPU-Kosten von MAX (der reinen Textur-Kapazität) und macht sie wieder von
+  // S.count abhängig, wie im CPU-Original. Sonst würde jede MAX-Erhöhung die Rechenlast für
+  // ALLE Nutzer erhöhen, unabhängig von der gewählten Partikelanzahl.
+  const drawCount = Math.min(S.count, MAX);
+  const rowsNeeded = Math.min(TEX_DIM, Math.max(1, Math.ceil(drawCount / TEX_DIM)));
+  const rowFrac = rowsNeeded / TEX_DIM;
+
+  // ── GPGPU Lifecycle- + Physik-Pass (nur die benötigten Zeilen, jeden Frame, kein Staffeln) ──
   gl.disable(gl.BLEND);
-  gl.viewport(0,0,TEX_DIM,TEX_DIM);
+  gl.viewport(0,0,TEX_DIM,rowsNeeded);
   gl.bindBuffer(gl.ARRAY_BUFFER, _glQuadVbo);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, _fboB[1-_curB]);
   gl.useProgram(_lifeProg);
   gl.enableVertexAttribArray(_lifeLoc.aPos);
   gl.vertexAttribPointer(_lifeLoc.aPos, 2, gl.FLOAT, false, 0, 0);
-  _bindComputeUniforms(_lifeLoc, textOn, textGS, spdScale, now);
+  _bindComputeUniforms(_lifeLoc, textOn, textGS, spdScale, now, rowFrac);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, _fboA[1-_curA]);
   gl.useProgram(_physProg);
   gl.enableVertexAttribArray(_physLoc.aPos);
   gl.vertexAttribPointer(_physLoc.aPos, 2, gl.FLOAT, false, 0, 0);
-  _bindComputeUniforms(_physLoc, textOn, textGS, spdScale, now);
+  _bindComputeUniforms(_physLoc, textOn, textGS, spdScale, now, rowFrac);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   _curB = 1-_curB; _curA = 1-_curA;
@@ -1641,7 +1654,6 @@ function animate() {
   gl.uniform2f(_renderLoc.uResolution, W, H);
   const cDriveMode=S.colorDrive==='velocity'?1:S.colorDrive==='posX'?2:S.colorDrive==='posY'?3:S.colorDrive==='age'?4:S.colorDrive==='mixed'?5:0;
   gl.uniform1i(_renderLoc.uColorDrive, cDriveMode);
-  const drawCount = Math.min(S.count, MAX);
   gl.drawArrays(gl.LINES, 0, drawCount*2);
 
   if(++_fpsTimer>45){
@@ -1828,6 +1840,17 @@ attribute vec2 aPos;
 varying vec2 vUv;
 void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }`;
 
+// Wie quadVS, aber für die Lifecycle-/Physik-Passes: uRowFrac (= benötigte Texel-Zeilen / TEX_DIM)
+// staucht vUv.y auf den tatsächlich aktiven Bereich der Zustands-Textur, passend zum mit
+// gl.viewport(0,0,TEX_DIM,rowsNeeded) verkleinerten Render-Ziel in animate() — so bleibt die
+// 1:1-Zuordnung Ziel-Pixel-Zeile ↔ Quell-Texel-Zeile erhalten, statt den vollen 0..1-UV-Bereich
+// in das kleinere Viewport zu stauchen (was Zeilen vertikal verzerrt/vermischt hätte).
+const computeQuadVS = `
+attribute vec2 aPos;
+uniform float uRowFrac;
+varying vec2 vUv;
+void main(){ vUv = vec2(aPos.x*0.5+0.5, (aPos.y*0.5+0.5)*uRowFrac); gl_Position = vec4(aPos,0.0,1.0); }`;
+
 const lifeFS = `
 precision highp float;
 ${_computeUniformsGLSL}
@@ -1947,8 +1970,8 @@ function initWebGL() {
   _floatLinearOK = oesTextureFloat && !!gl.getExtension('OES_texture_float_linear');
 
   // ── Programme ─────────────────────────────────────────────────────────
-  _lifeProg = compileProgram(quadVS, lifeFS);
-  _physProg = compileProgram(quadVS, physFS);
+  _lifeProg = compileProgram(computeQuadVS, lifeFS);
+  _physProg = compileProgram(computeQuadVS, physFS);
   _renderProg = compileProgram(renderVS, renderFS);
   _fadeProg = compileProgram(quadVS, fadeFS);
 
@@ -1959,7 +1982,7 @@ function initWebGL() {
     return o;
   }
   const computeAttribs = ['aPos'];
-  const computeUniforms = ['uTexA','uTexB','uFlowTex','uTextTex','uResolution','uTextOn','uTextGravStr','uSpeed','uDamp','uRespawnSeed','uLife','uForces','uForceCount','uCursorRepel'];
+  const computeUniforms = ['uTexA','uTexB','uFlowTex','uTextTex','uResolution','uTextOn','uTextGravStr','uSpeed','uDamp','uRespawnSeed','uLife','uForces','uForceCount','uCursorRepel','uRowFrac'];
   _lifeLoc = locs(_lifeProg, computeAttribs, computeUniforms);
   _physLoc = locs(_physProg, computeAttribs, computeUniforms);
   _renderLoc = locs(_renderProg, ['aUv','aEnd'], ['uTexA','uTexB','uPalette','uResolution','uColorDrive']);
@@ -2099,7 +2122,7 @@ function bindSlider(sid,vid,key,fmt,onChange){
 
 // Main sliders
 bindSlider('s-count','v-count','count',fi);
-bindSlider('s-life','v-life','life',n=>Math.round(n));
+bindSlider('s-life','v-life','life',n=>Math.round(n)+' Frames');
 bindSlider('s-alpha','v-alpha','alpha',f3,()=>buildPalette());
 bindSlider('s-lw','v-lw','lw',f1);
 bindSlider('s-speed','v-speed','speed',f2);
@@ -2354,7 +2377,7 @@ document.getElementById('file-import').addEventListener('change',e=>{
 // ── applyAllUI: sync all UI elements from S ──────────────────────────────
 function applyAllUI(){
   // Main sliders
-  [['s-count','v-count','count',fi],['s-life','v-life','life',n=>Math.round(n)],['s-alpha','v-alpha','alpha',f3],['s-lw','v-lw','lw',f1],['s-speed','v-speed','speed',f2],['s-turb','v-turb','turb',f1],['s-tscale','v-tscale','tscale',f1],['s-damp','v-damp','damp',f2],['s-trail','v-trail','trail',f2],['s-grav','v-grav','gravity',fi],['s-autoint','v-autoint','autoInterval',n=>n.toFixed(1)+' s'],['s-autodur','v-autodur','autoDuration',n=>n.toFixed(1)+' s'],].forEach(([sid,vid,key,fmt])=>{const sl=document.getElementById(sid),vl=document.getElementById(vid);if(sl)sl.value=S[key];if(vl)vl.textContent=fmt(S[key]);});
+  [['s-count','v-count','count',fi],['s-life','v-life','life',n=>Math.round(n)+' Frames'],['s-alpha','v-alpha','alpha',f3],['s-lw','v-lw','lw',f1],['s-speed','v-speed','speed',f2],['s-turb','v-turb','turb',f1],['s-tscale','v-tscale','tscale',f1],['s-damp','v-damp','damp',f2],['s-trail','v-trail','trail',f2],['s-grav','v-grav','gravity',fi],['s-autoint','v-autoint','autoInterval',n=>n.toFixed(1)+' s'],['s-autodur','v-autodur','autoDuration',n=>n.toFixed(1)+' s'],].forEach(([sid,vid,key,fmt])=>{const sl=document.getElementById(sid),vl=document.getElementById(vid);if(sl)sl.value=S[key];if(vl)vl.textContent=fmt(S[key]);});
   // Auto-grav (special scale)
   slAutoGrav.value=Math.round(Math.sqrt(Math.max(0,S.autoGravity)));vlAutoGrav.textContent=fi(S.autoGravity);
   // Toggles
@@ -2493,7 +2516,7 @@ document.getElementById('btn-music').addEventListener('click',e=>{e.stopPropagat
 // ── Performance Presets ───────────────────────────────────────────────────
 // Desktop-Preset: optimiert für große Bildschirme (eigenständige Werte, DEFAULTS bleiben unberührt)
 const DESKTOP_PRESET = {
-  count: 98500, life: 250, alpha: 1.5, lw: 6,
+  count: 4000000, life: 250, alpha: 1.5, lw: 6,
   speed: 0.6397797844673414, turb: 1.9716886726758163, tscale: 13.2, damp: 0.962,
   trail: 0.005, additive: true, gravity: 51500, scheme: 'custom',
   customStops: [{h:17},{h:244},{h:168},{h:246},{h:251},{h:38}], customSat: 80,
@@ -2548,7 +2571,7 @@ document.getElementById('btn-preset-pc').addEventListener('click',()=>{
   _applyPreset(DESKTOP_PRESET);
 });
 document.getElementById('btn-preset-phone').addEventListener('click',()=>{
-  S.count=140000; S.life=380; S.alpha=1.2; S.speed=0.2; S.turb=3.5; S.trail=0.08; S.additive=true;
+  S.count=1000000; S.life=380; S.alpha=1.2; S.speed=0.2; S.turb=3.5; S.trail=0.08; S.additive=true;
   _countCalibStop(); // Preset legt eine eigene Partikelanzahl fest → Kalibrierung erlischt
   buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
 });
