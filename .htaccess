@@ -1,0 +1,4 @@
+# HTTP -> HTTPS erzwingen (für Strato-Webspace, sobald das SSL-Zertifikat aktiv ist)
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
