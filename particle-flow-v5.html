@@ -217,7 +217,7 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
       <div class="sec-lbl">Schnellstart</div>
       <div class="btn-row" style="margin-bottom:8px">
         <button class="preset-btn" id="btn-preset-pc">My PC was expensive<br><span style="color:rgba(255,255,255,0.25)">180k Partikel</span></button>
-        <button class="preset-btn" id="btn-preset-phone">My Phone was expensive<br><span style="color:rgba(255,255,255,0.25)">25k Partikel</span></button>
+        <button class="preset-btn" id="btn-preset-phone">My Phone was expensive<br><span style="color:rgba(255,255,255,0.25)">140k Partikel</span></button>
       </div>
       <button class="surprise-btn" id="btn-surprise">✦ Surprise Me</button>
     </div>
@@ -236,15 +236,10 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
       <div class="sec-lbl">Basis-Einstellungen</div>
       <div class="sec-lbl">Farbschema</div>
       <div class="scheme-grid">
-        <div class="sc-btn" data-scheme="blue"><div class="sc-sw" style="background:linear-gradient(90deg,#040d28,#0a3fa8,#1a8fff,#60d0ff)"></div><div class="sc-name">Blau</div></div>
         <div class="sc-btn" data-scheme="galaxy"><div class="sc-sw" style="background:linear-gradient(90deg,#12003a,#3b0ba8,#1a44cc,#00c0f0)"></div><div class="sc-name">Galaxis</div></div>
         <div class="sc-btn" data-scheme="plasma"><div class="sc-sw" style="background:linear-gradient(90deg,#ff0090,#8800ee,#0066ff,#00ffe0)"></div><div class="sc-name">Plasma</div></div>
-        <div class="sc-btn" data-scheme="ember"><div class="sc-sw" style="background:linear-gradient(90deg,#1a0505,#c03010,#ff8844)"></div><div class="sc-name">Ember</div></div>
-        <div class="sc-btn" data-scheme="rainbow"><div class="sc-sw" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)"></div><div class="sc-name">Regenbogen</div></div>
-        <div class="sc-btn" data-scheme="aurora"><div class="sc-sw" style="background:linear-gradient(90deg,#00c060,#00ccaa,#4466ff,#8833ee)"></div><div class="sc-name">Polarlicht</div></div>
         <div class="sc-btn" data-scheme="neon"><div class="sc-sw" style="background:linear-gradient(90deg,#f0f,#0ff,#0f8)"></div><div class="sc-name">Neon</div></div>
-        <div class="sc-btn" data-scheme="sunset"><div class="sc-sw" style="background:linear-gradient(90deg,#ff6a00,#ee0979,#7b2ff7)"></div><div class="sc-name">Sonnenunt.</div></div>
-        <div class="sc-btn" data-scheme="ocean"><div class="sc-sw" style="background:linear-gradient(90deg,#0a1628,#0055a0,#00c8cc)"></div><div class="sc-name">Ozean</div></div>
+        <div class="sc-btn" data-scheme="rainbow"><div class="sc-sw" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)"></div><div class="sc-name">Regenbogen</div></div>
         <div class="sc-btn active" data-scheme="custom"><div class="sc-sw" id="custom-scheme-sw" style="background:linear-gradient(90deg,#3af,#f3a,#fa3)"></div><div class="sc-name">Eigener</div></div>
       </div>
       <div class="ctrl">
@@ -252,8 +247,8 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
         <input type="range" id="s-count" min="500" max="200000" step="500" value="100000">
       </div>
       <div class="ctrl">
-        <div class="ctrl-hd"><span class="ctrl-name">Helligkeit</span><span class="ctrl-val" id="v-alpha">0.520</span></div>
-        <input type="range" id="s-alpha" min="0.004" max="1.5" step="0.004" value="0.52">
+        <div class="ctrl-hd"><span class="ctrl-name">Wirbelstärke</span><span style="display:flex;align-items:center;gap:6px"><button class="ctrl-reset-btn" id="btn-reset-turb" title="Animation zurücksetzen">↺</button><span class="ctrl-val" id="v-turb">5.5</span></span></div>
+        <input type="range" id="s-turb" min="0.3" max="15.0" step="0.1" value="5.5">
       </div>
       <div class="ctrl">
         <div class="ctrl-hd"><span class="ctrl-name">Geschwindigkeit</span><span style="display:flex;align-items:center;gap:6px"><button class="ctrl-reset-btn" id="btn-reset-speed" title="Animation zurücksetzen">↺</button><span class="ctrl-val" id="v-speed">0.25</span></span></div>
@@ -269,6 +264,14 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
     <!-- Farbschema - Erweitert -->
     <div class="sec">
       <div class="sec-lbl">Farbschema – Erweitert</div>
+      <div class="sec-lbl" style="margin-top:4px">Weitere Farbschemata</div>
+      <div class="scheme-grid">
+        <div class="sc-btn" data-scheme="blue"><div class="sc-sw" style="background:linear-gradient(90deg,#040d28,#0a3fa8,#1a8fff,#60d0ff)"></div><div class="sc-name">Blau</div></div>
+        <div class="sc-btn" data-scheme="ember"><div class="sc-sw" style="background:linear-gradient(90deg,#1a0505,#c03010,#ff8844)"></div><div class="sc-name">Ember</div></div>
+        <div class="sc-btn" data-scheme="aurora"><div class="sc-sw" style="background:linear-gradient(90deg,#00c060,#00ccaa,#4466ff,#8833ee)"></div><div class="sc-name">Polarlicht</div></div>
+        <div class="sc-btn" data-scheme="sunset"><div class="sc-sw" style="background:linear-gradient(90deg,#ff6a00,#ee0979,#7b2ff7)"></div><div class="sc-name">Sonnenunt.</div></div>
+        <div class="sc-btn" data-scheme="ocean"><div class="sc-sw" style="background:linear-gradient(90deg,#0a1628,#0055a0,#00c8cc)"></div><div class="sc-name">Ozean</div></div>
+      </div>
       <div style="margin-top:12px">
         <div class="sec-lbl">Farbantrieb</div>
         <div class="drive-grid">
@@ -328,6 +331,10 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
         <div class="ctrl-hd"><span class="ctrl-name">Lebensdauer</span><span class="ctrl-val" id="v-life">700</span></div>
         <input type="range" id="s-life" min="30" max="2000" step="10" value="700">
       </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Helligkeit</span><span class="ctrl-val" id="v-alpha">0.520</span></div>
+        <input type="range" id="s-alpha" min="0.004" max="1.5" step="0.004" value="0.52">
+      </div>
       <!-- Helligkeit-Animation -->
       <div class="anim-sub">
         <div class="tog-row"><span class="tog-name">↻ Helligkeit animieren</span><div class="tog" id="t-anim-alpha"></div></div>
@@ -357,10 +364,6 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
           <div class="ctrl"><div class="ctrl-hd"><span class="ctrl-name">Dauer</span><span class="ctrl-val" id="v-adur-speed">8 s</span></div><input type="range" id="s-adur-speed" min="1" max="60" step="1" value="8"></div>
           <div class="anim-prog"><div class="anim-prog-bar"><div id="apb-speed"></div></div><div class="anim-prog-labels"><span id="apl-speed">0.05</span><span id="apc-speed" style="color:rgba(59,130,246,.6)">–</span><span id="apr-speed">0.60</span></div></div>
         </div>
-      </div>
-      <div class="ctrl">
-        <div class="ctrl-hd"><span class="ctrl-name">Wirbelstärke</span><span class="ctrl-val" id="v-turb">5.5</span></div>
-        <input type="range" id="s-turb" min="0.3" max="15.0" step="0.1" value="5.5">
       </div>
       <!-- Wirbelstärke-Animation -->
       <div class="anim-sub">
@@ -1821,6 +1824,11 @@ document.getElementById('btn-reset-speed').addEventListener('click',e=>{
   S.speedAnim=DEFAULTS.speedAnim; S.speedMin=DEFAULTS.speedMin; S.speedMax=DEFAULTS.speedMax; S.speedDur=DEFAULTS.speedDur;
   applyAllUI();
 });
+document.getElementById('btn-reset-turb').addEventListener('click',e=>{
+  e.stopPropagation();
+  S.turbAnim=DEFAULTS.turbAnim; S.turbMin=DEFAULTS.turbMin; S.turbMax=DEFAULTS.turbMax; S.turbDur=DEFAULTS.turbDur;
+  applyAllUI();
+});
 
 // Panel beim ersten Öffnen mit DEFAULTS synchronisieren
 applyAllUI();
@@ -1844,7 +1852,7 @@ document.getElementById('btn-preset-pc').addEventListener('click',()=>{
   buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
 });
 document.getElementById('btn-preset-phone').addEventListener('click',()=>{
-  S.count=25000; S.life=380; S.alpha=1.2; S.speed=0.2; S.turb=3.5; S.trail=0.08; S.additive=true;
+  S.count=140000; S.life=380; S.alpha=1.2; S.speed=0.2; S.turb=3.5; S.trail=0.08; S.additive=true;
   buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
 });
 
