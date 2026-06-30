@@ -25,8 +25,8 @@
 body { background: #07070f; overflow: hidden; font-family: 'Figtree', system-ui, sans-serif; }
 canvas { display: block; position: fixed; inset: 0; }
 
-.hud-btns { position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:300;transition:top .3s cubic-bezier(.4,0,.2,1); }
-.hud-btns.panel-open { top:70px; }
+.hud-btns { position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:300;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s; }
+.hud-btns.panel-open { transform:translateX(calc(-100vw + 16px)); opacity:0; pointer-events:none; }
 .hud-btn {
   width:42px;height:42px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);
   border-radius:10px;display:flex;align-items:center;justify-content:center;
@@ -160,6 +160,11 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
 .preset-btn:hover { background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.18);color:rgba(255,255,255,0.8); }
 .surprise-btn { width:100%;padding:11px;background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(168,85,247,.08));border:1px solid rgba(120,100,255,0.18);border-radius:9px;color:rgba(180,160,255,0.75);font-size:12px;font-family:inherit;font-weight:500;cursor:pointer;transition:all .2s;letter-spacing:.05em; }
 .surprise-btn:hover { background:linear-gradient(135deg,rgba(59,130,246,.2),rgba(168,85,247,.2));border-color:rgba(140,120,255,.4);color:#fff; }
+.adv-toggle-btn { width:100%;padding:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:rgba(255,255,255,0.4);font-size:11px;font-family:inherit;cursor:pointer;transition:all .2s; }
+.adv-toggle-btn:hover { background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.75); }
+.adv-toggle-btn.on { color:#60a5fa;border-color:rgba(59,130,246,.35); }
+#adv-toggle-arrow { display:inline-block;transition:transform .25s; }
+.adv-toggle-btn.on #adv-toggle-arrow { transform:rotate(180deg); }
 
 /* ── Fireworks ──────────────────────────────────────────────────────── */
 .fw-prog-row { display:flex;justify-content:space-between;margin-top:5px; }
@@ -224,8 +229,9 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
     </div>
     <div class="div"></div>
 
-    <!-- Farbe -->
+    <!-- Basis-Einstellungen -->
     <div class="sec">
+      <div class="sec-lbl">Basis-Einstellungen</div>
       <div class="sec-lbl">Farbschema</div>
       <div class="scheme-grid">
         <div class="sc-btn" data-scheme="blue"><div class="sc-sw" style="background:linear-gradient(90deg,#040d28,#0a3fa8,#1a8fff,#60d0ff)"></div><div class="sc-name">Blau</div></div>
@@ -239,6 +245,32 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
         <div class="sc-btn" data-scheme="ocean"><div class="sc-sw" style="background:linear-gradient(90deg,#0a1628,#0055a0,#00c8cc)"></div><div class="sc-name">Ozean</div></div>
         <div class="sc-btn active" data-scheme="custom"><div class="sc-sw" id="custom-scheme-sw" style="background:linear-gradient(90deg,#3af,#f3a,#fa3)"></div><div class="sc-name">Eigener</div></div>
       </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Anzahl</span><span class="ctrl-val" id="v-count">100 000</span></div>
+        <input type="range" id="s-count" min="500" max="200000" step="500" value="100000">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Helligkeit</span><span class="ctrl-val" id="v-alpha">0.520</span></div>
+        <input type="range" id="s-alpha" min="0.004" max="1.5" step="0.004" value="0.52">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Geschwindigkeit</span><span class="ctrl-val" id="v-speed">0.25</span></div>
+        <input type="range" id="s-speed" min="0.05" max="8.0" step="0.05" value="0.25">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd"><span class="ctrl-name">Spurlänge <span style="color:rgba(255,255,255,0.2);font-size:10px">(niedrig=länger)</span></span><span class="ctrl-val" id="v-trail">0.06</span></div>
+        <input type="range" id="s-trail" min="0.005" max="1.0" step="0.005" value="0.06">
+      </div>
+    </div>
+    <div class="div"></div>
+
+    <button class="adv-toggle-btn" id="btn-advanced-toggle">⚙ Erweiterte Einstellungen <span id="adv-toggle-arrow">▾</span></button>
+    <div class="div"></div>
+
+    <div id="advanced-settings" style="display:none">
+    <!-- Farbschema - Erweitert -->
+    <div class="sec">
+      <div class="sec-lbl">Farbschema – Erweitert</div>
       <div style="margin-top:12px">
         <div class="sec-lbl">Farbantrieb</div>
         <div class="drive-grid">
@@ -291,20 +323,12 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
     </div>
     <div class="div"></div>
 
-    <!-- Partikel -->
+    <!-- Partikel - Erweitert -->
     <div class="sec">
-      <div class="sec-lbl">Partikel</div>
-      <div class="ctrl">
-        <div class="ctrl-hd"><span class="ctrl-name">Anzahl</span><span class="ctrl-val" id="v-count">100 000</span></div>
-        <input type="range" id="s-count" min="500" max="200000" step="500" value="100000">
-      </div>
+      <div class="sec-lbl">Partikel – Erweitert</div>
       <div class="ctrl">
         <div class="ctrl-hd"><span class="ctrl-name">Lebensdauer</span><span class="ctrl-val" id="v-life">700</span></div>
         <input type="range" id="s-life" min="30" max="2000" step="10" value="700">
-      </div>
-      <div class="ctrl">
-        <div class="ctrl-hd"><span class="ctrl-name">Helligkeit</span><span class="ctrl-val" id="v-alpha">0.520</span></div>
-        <input type="range" id="s-alpha" min="0.004" max="1.5" step="0.004" value="0.52">
       </div>
       <!-- Helligkeit-Animation -->
       <div class="anim-sub">
@@ -323,13 +347,9 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
     </div>
     <div class="div"></div>
 
-    <!-- Strömung -->
+    <!-- Strömung - Erweitert -->
     <div class="sec">
-      <div class="sec-lbl">Strömung</div>
-      <div class="ctrl">
-        <div class="ctrl-hd"><span class="ctrl-name">Geschwindigkeit</span><span class="ctrl-val" id="v-speed">0.25</span></div>
-        <input type="range" id="s-speed" min="0.05" max="8.0" step="0.05" value="0.25">
-      </div>
+      <div class="sec-lbl">Strömung – Erweitert</div>
       <!-- Geschwindigkeit-Animation -->
       <div class="anim-sub">
         <div class="tog-row"><span class="tog-name">↻ Geschwindigkeit animieren</span><div class="tog on" id="t-anim-speed"></div></div>
@@ -379,13 +399,9 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
     </div>
     <div class="div"></div>
 
-    <!-- Spur & Glühen -->
+    <!-- Spur & Glühen - Erweitert -->
     <div class="sec">
-      <div class="sec-lbl">Spur &amp; Glühen</div>
-      <div class="ctrl">
-        <div class="ctrl-hd"><span class="ctrl-name">Spurlänge <span style="color:rgba(255,255,255,0.2);font-size:10px">(niedrig=länger)</span></span><span class="ctrl-val" id="v-trail">0.06</span></div>
-        <input type="range" id="s-trail" min="0.005" max="1.0" step="0.005" value="0.06">
-      </div>
+      <div class="sec-lbl">Spur &amp; Glühen – Erweitert</div>
       <!-- Spurlänge-Animation -->
       <div class="anim-sub">
         <div class="tog-row"><span class="tog-name">↻ Spurlänge animieren</span><div class="tog" id="t-anim-trail"></div></div>
@@ -533,6 +549,7 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
           </div>
         </div>
       </div>
+    </div>
     </div>
 
     <div class="btn-row">
@@ -1416,6 +1433,13 @@ function setPanelOpen(on){panel.classList.toggle('open',on);if(_hudBtns)_hudBtns
 document.getElementById('btn-settings').addEventListener('click',e=>{e.stopPropagation();setPanelOpen(!panel.classList.contains('open'));});
 document.getElementById('btn-close').addEventListener('click',()=>setPanelOpen(false));
 document.addEventListener('click',e=>{if(!panel.contains(e.target)&&e.target.id!=='btn-settings'&&e.target.id!=='file-import')setPanelOpen(false);});
+
+const _advBody=document.getElementById('advanced-settings'),_advBtn=document.getElementById('btn-advanced-toggle');
+_advBtn.addEventListener('click',()=>{
+  const on=_advBody.style.display==='none';
+  _advBody.style.display=on?'block':'none';
+  _advBtn.classList.toggle('on',on);
+});
 panel.addEventListener('click',e=>e.stopPropagation());
 
 // Format helpers

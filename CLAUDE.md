@@ -202,6 +202,13 @@ Import calls `applyAllUI()` to re-sync all sliders and toggles.
 - Right slide-in panel (300px), opened via the gear icon (top-right)
 - Click outside to close
 - Import ↑ / Export ↓ buttons in panel header
+- HUD buttons (`.hud-btns`: fullscreen/music/settings) slide off-screen left + fade out while the panel is open (`.hud-btns.panel-open`), since the panel covers nearly the full width on mobile and the panel's own `#btn-close` already handles closing
+
+### Basic / Advanced settings split
+- Opening the panel shows **Basis-Einstellungen** first: only 5 controls (Farbschema, Partikelanzahl, Helligkeit, Geschwindigkeit, Spurlänge) — the highest-impact, least-overwhelming parameters for casual visitors
+- Everything else (Farbantrieb/custom colour editor, colour-animation, Lebensdauer/Linienbreite, Wirbelstärke/Zeitentwicklung/Dämpfung/FBM, additive glow, Maus-Interaktion, Auto-Klick, Feuerwerk-Modus, Text-Gravitationsfeld) lives inside `#advanced-settings`, collapsed (`display:none`) by default, revealed via the `#btn-advanced-toggle` "⚙ Erweiterte Einstellungen" button
+- This is purely a DOM/visibility reorganisation — `bindSlider`/`applyAllUI`/animation ticking all operate by element ID, not DOM position, so moving a control between Basic and Advanced never requires touching the binding logic
+- New settings should default into Advanced unless they're a primary visual-impact knob a first-time visitor should see immediately
 
 ### Slider binding
 ```javascript
