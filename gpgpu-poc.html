@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>GPGPU Partikel-Proof-of-Concept</title>
+<style>
+  html,body{margin:0;padding:0;background:#07070f;overflow:hidden;height:100%;}
+  canvas{display:block;width:100vw;height:100vh;}
+  #overlay{
+    position:fixed;top:10px;left:10px;color:#cde;font:12px/1.5 monospace;
+    background:rgba(7,7,15,.72);border:1px solid #2a3050;border-radius:8px;
+    padding:10px 14px;max-width:480px;white-space:pre;z-index:10;
+  }
+  #controls{
+    position:fixed;top:10px;right:10px;color:#cde;font:12px/1.6 monospace;
+    background:rgba(7,7,15,.72);border:1px solid #2a3050;border-radius:8px;
+    padding:10px 14px;z-index:10;
+  }
+  #controls button, #controls select{
+    font:12px monospace;background:#161a2e;color:#cde;border:1px solid #3b82f6;
+    border-radius:5px;padding:4px 8px;margin:2px 0;cursor:pointer;display:block;width:100%;
+  }
+  #controls button:hover{background:#1e2440;}
+  #controls button:disabled{opacity:.4;cursor:default;}
+  .warn{color:#f5a623;}
+  .bad{color:#ff5d5d;}
+  .good{color:#4ade80;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="overlay">Initialisiere…</div>
+<div id="controls">
+  <label>Partikelanzahl<br>
+    <select id="sel-count"></select>
+  </label>
+  <button id="btn-bench">Auto-Benchmark starten</button>
+  <button id="btn-stop" disabled>Benchmark abbrechen</button>
+</div>
+
+<script>
+/* ============================================================================
+ * GPGPU-Partikel-Proof-of-Concept
+ * ----------------------------------------------------------------------------
+ * Zweck: Beweisen (oder widerlegen), ob das Verlagern der Partikelphysik von
+ * der CPU (JS-Schleife über Float32Arrays, siehe particle-flow-v5.html) auf
+ * die GPU (Zustand in Float-Texturen, Update per Fragment-Shader, "Ping-Pong"
+ * zwischen zwei Framebuffern) auf der Zielhardware spürbar mehr Partikel bei
+ * 60fps erlaubt. Eigenständige Datei auf einem Experiment-Branch — bewusst
+ * NICHT in particle-flow-v5.html integriert, um das Produktiv-File unberührt
+ * zu lassen, solange diese Architektur nicht bewiesen UND ausgebaut ist.
+ *
+ * Bewusste Vereinfachungen gegenüber der Produktivdatei (= spätere
+ * Erweiterungspunkte, sobald die Architektur sich bewährt):
+ *   - Flowfield ist eine analytische Pseudo-Curl-Funktion direkt im Shader,
+ *     nicht das echte Perlin-Curl-Noise-Grid (siehe Kommentar im Physik-Shader).
+ *   - Keine Force-Liste (Klick/Komet/Feuerwerk/Auto-Klick) — nur das Flowfield.
+ *   - Keine Lebensdauer/Respawn, kein Textgravitationsfeld, kein Farbschema-
+ *     System — Partikel laufen toroidal (Wrap an den Rändern) endlos weiter,
+ *     Farbe ist eine einfache Geschwindigkeits-Einfärbung.
+ *   - Ein Render-Pfad (WebGL1 GPGPU). Kein Canvas2D-Fallback — wenn die nötigen
+ *     GPU-Fähigkeiten fehlen, wird das explizit gemeldet statt degradiert.
+ *
+ * Architektur (für späteren Ausbau):
+ *   - Partikelzustand = eine RGBA-Float-Textur pro Ping-Pong-Hälfte:
+ *     .xy = Position (Logische Pixel), .zw = Geschwindigkeit.
+ *   - Physik-Pass: Fullscreen-Quad-Draw in die "nächste" Textur, liest die
+ *     "aktuelle" Textur als Sampler. Läuft komplett auf der GPU, pro Frame
+ *     keine JS-Schleife über einzelne Partikel mehr.
+ *   - Render-Pass: pro Partikel 2 Vertices (Linienliste, wie im Original),
+ *     Vertex-Shader sampelt die Positions-Textur direkt ("Vertex Texture
+ *     Fetch") — daher MAX_VERTEX_TEXTURE_IMAGE_UNITS > 0 zwingend.
+ * ==========================================================================*/
+
+const canvas = document.getElementById('c');
+const overlayEl = document.getElementById('overlay');
+const selCount = document.getElementById('sel-count');
+const btnBench = document.getElementById('btn-bench');
+const btnStop = document.getElementById('btn-stop');
+
+const COUNT_LADDER = [50000, 100000, 200000, 400000, 800000, 1500000, 3000000];
+COUNT_LADDER.forEach(n => {
+  const o = document.createElement('option');
+  o.value = n; o.textContent = n.toLocaleString('de-DE');
+  selCount.appendChild(o);
+});
+selCount.value = 200000;
+
+let _dpr = Math.min(window.devicePixelRatio || 1, 2);
+let W = 0, H = 0;
+function resize(){
+  _dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.round(innerWidth * _dpr);
+  H = canvas.height = Math.round(innerHeight * _dpr);
+  canvas.style.width = innerWidth + 'px';
+  canvas.style.height = innerHeight + 'px';
+  if (gl) gl.viewport(0, 0, W, H);
+}
+
+// ── WebGL-Kontext + Fähigkeits-Check ────────────────────────────────────────
+// Diese Stelle ist der wichtigste diagnostische Output der ganzen PoC: sie
+// beantwortet direkt, ob der GPGPU-Ansatz auf dem jeweiligen Gerät überhaupt
+// grundsätzlich möglich ist, BEVOR irgendetwas an Partikelzahlen getestet wird.
+const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, alpha: false, antialias: false });
+window.addEventListener('resize', resize);
+resize();
+const caps = { gl: !!gl };
+let fatalReason = null;
+
+if (!gl) {
+  fatalReason = 'Kein WebGL-Kontext verfügbar.';
+} else {
+  caps.maxVertexTextures = gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS);
+  caps.oesTextureFloat = !!gl.getExtension('OES_texture_float');
+  caps.oesTextureHalfFloat = !!gl.getExtension('OES_texture_half_float');
+  caps.webglColorBufferFloat = !!gl.getExtension('WEBGL_color_buffer_float');
+  caps.webglColorBufferHalfFloat = !!gl.getExtension('EXT_color_buffer_half_float');
+
+  if (caps.maxVertexTextures < 1) {
+    fatalReason = `GPU erlaubt keine Vertex-Texture-Fetches (MAX_VERTEX_TEXTURE_IMAGE_UNITS=${caps.maxVertexTextures}) — dieser Architekturansatz (Position im Vertex-Shader aus Textur lesen) ist auf dieser Hardware nicht nutzbar.`;
+  } else if (!caps.oesTextureFloat && !caps.oesTextureHalfFloat) {
+    fatalReason = 'Weder OES_texture_float noch OES_texture_half_float verfügbar — kein Fließkomma-Zustand in Texturen möglich.';
+  }
+}
+
+// ── Render-Target-Tauglichkeit: Float zuerst versuchen, sonst Half-Float ───
+let STATE_TYPE = null, STATE_GLTYPE = null;
+function _canRenderToType(glType){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, 4, 0, gl.RGBA, glType, null);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(fbo); gl.deleteTexture(tex);
+  return ok;
+}
+if (!fatalReason) {
+  if (caps.oesTextureFloat && _canRenderToType(gl.FLOAT)) { STATE_TYPE = 'float'; STATE_GLTYPE = gl.FLOAT; }
+  else if (caps.oesTextureHalfFloat) {
+    const HALF_FLOAT_OES = gl.getExtension('OES_texture_half_float').HALF_FLOAT_OES;
+    if (_canRenderToType(HALF_FLOAT_OES)) { STATE_TYPE = 'half_float'; STATE_GLTYPE = HALF_FLOAT_OES; }
+  }
+  if (!STATE_TYPE) fatalReason = 'Kann nicht in eine Fließkomma-Textur rendern (FBO unvollständig für FLOAT und HALF_FLOAT) — Treiber/GPU unterstützt das Ping-Pong-Verfahren nicht.';
+}
+
+console.log('[GPGPU-PoC] Fähigkeits-Check:', JSON.stringify(caps), 'gewählter Texturtyp:', STATE_TYPE, fatalReason ? ('FATAL: ' + fatalReason) : 'OK');
+
+if (fatalReason) {
+  overlayEl.innerHTML = `<span class="bad">GPGPU-Ansatz auf diesem Gerät nicht nutzbar:</span>\n${fatalReason}\n\nFähigkeiten: ${JSON.stringify(caps, null, 1)}`;
+  btnBench.disabled = true; selCount.disabled = true;
+  throw new Error('GPGPU PoC: ' + fatalReason);
+}
+
+// ── Shader-Hilfsfunktion ────────────────────────────────────────────────────
+function compileProgram(vsSrc, fsSrc){
+  function compile(type, src){
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      throw new Error('Shader-Fehler: ' + gl.getShaderInfoLog(s) + '\n' + src);
+    }
+    return s;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSrc));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSrc));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    throw new Error('Link-Fehler: ' + gl.getProgramInfoLog(prog));
+  }
+  return prog;
+}
+
+// ── Vollbild-Quad (für den Physik-Pass) ─────────────────────────────────────
+const quadVBO = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+// ── Physik-Pass: Zustand (Position+Geschwindigkeit) als RGBA-Textur ─────────
+const physVS = `
+attribute vec2 aPos;
+varying vec2 vUv;
+void main(){
+  vUv = aPos*0.5+0.5;
+  gl_Position = vec4(aPos,0.0,1.0);
+}`;
+const physFS = `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uState;
+uniform vec2 uResolution;
+uniform float uTime;
+uniform float uSpeed;
+uniform float uTurb;
+uniform float uDamp;
+uniform float uTscale;
+
+void main(){
+  vec4 state = texture2D(uState, vUv);
+  vec2 pos = state.xy;
+  vec2 vel = state.zw;
+
+  // PoC-Platzhalter fuer das Flowfield: analytische Pseudo-Curl-Funktion direkt
+  // im Shader statt der echten CPU-Curl-Noise-Grid-Textur aus particle-flow-v5.html
+  // (updateField(), 64x45 Grid). Erweiterungspunkt: stattdessen eine kleine
+  // Flowfield-Textur uFlowTex per texImage2D hochladen und hier bilinear
+  // sampeln — die Architektur (Ping-Pong, Vertex-Texture-Fetch beim Rendern)
+  // bleibt dafür unveraendert, nur dieser Block würde ersetzt.
+  float angle = sin(pos.x*0.012 + uTime*uTscale) * cos(pos.y*0.012 - uTime*uTscale*0.7) * 6.28318;
+  vec2 flow = vec2(cos(angle), sin(angle)) * uSpeed * uTurb;
+
+  vel = (vel + flow) * uDamp;
+  pos += vel;
+
+  // Toroidaler Wrap statt Lebensdauer/Respawn (Erweiterungspunkt: Alter-Kanal
+  // in einer zweiten Textur, Force-Liste fuer Klick/Komet/Feuerwerk als
+  // Uniform-Array hier addieren, Farb-Drive-Modi beim Rendern).
+  pos = mod(pos + uResolution, uResolution);
+
+  gl_FragColor = vec4(pos, vel);
+}`;
+const physProg = compileProgram(physVS, physFS);
+const physLoc = {
+  aPos: gl.getAttribLocation(physProg, 'aPos'),
+  uState: gl.getUniformLocation(physProg, 'uState'),
+  uResolution: gl.getUniformLocation(physProg, 'uResolution'),
+  uTime: gl.getUniformLocation(physProg, 'uTime'),
+  uSpeed: gl.getUniformLocation(physProg, 'uSpeed'),
+  uTurb: gl.getUniformLocation(physProg, 'uTurb'),
+  uDamp: gl.getUniformLocation(physProg, 'uDamp'),
+  uTscale: gl.getUniformLocation(physProg, 'uTscale'),
+};
+
+// ── Render-Pass: pro Partikel 2 Vertices (Linienliste), Position aus Textur ─
+const renderVS = `
+attribute vec2 aUv;
+attribute float aEnd; // 0 = Schweifende, 1 = aktuelle Position
+uniform sampler2D uState;
+uniform vec2 uResolution;
+uniform float uTailLen;
+varying float vSpeed;
+void main(){
+  vec4 state = texture2D(uState, aUv); // Vertex Texture Fetch — braucht MAX_VERTEX_TEXTURE_IMAGE_UNITS > 0
+  vec2 pos = state.xy;
+  vec2 vel = state.zw;
+  vec2 drawPos = aEnd > 0.5 ? pos : pos - vel*uTailLen;
+  vec2 clip = (drawPos/uResolution)*2.0-1.0;
+  clip.y = -clip.y;
+  gl_Position = vec4(clip,0.0,1.0);
+  vSpeed = length(vel);
+}`;
+const renderFS = `
+precision mediump float;
+varying float vSpeed;
+void main(){
+  float t = clamp(vSpeed*0.15, 0.0, 1.0);
+  vec3 col = mix(vec3(0.15,0.35,1.0), vec3(1.0,0.25,0.85), t);
+  gl_FragColor = vec4(col, 0.85);
+}`;
+const renderProg = compileProgram(renderVS, renderFS);
+const renderLoc = {
+  aUv: gl.getAttribLocation(renderProg, 'aUv'),
+  aEnd: gl.getAttribLocation(renderProg, 'aEnd'),
+  uState: gl.getUniformLocation(renderProg, 'uState'),
+  uResolution: gl.getUniformLocation(renderProg, 'uResolution'),
+  uTailLen: gl.getUniformLocation(renderProg, 'uTailLen'),
+};
+
+// ── Trail-Fade-Pass: dünnes halbtransparentes Quad über das Vorbild ─────────
+const fadeVS = physVS; // gleiches Vollbild-Quad
+const fadeFS = `
+precision mediump float;
+uniform float uAlpha;
+void main(){ gl_FragColor = vec4(0.0,0.0,0.0,uAlpha); }`;
+const fadeProg = compileProgram(fadeVS, fadeFS);
+const fadeLoc = { aPos: gl.getAttribLocation(fadeProg, 'aPos'), uAlpha: gl.getUniformLocation(fadeProg, 'uAlpha') };
+
+// ── Partikelzustand: zwei Ping-Pong-Texturen + FBOs, Größe je nach Anzahl ───
+let texDim = 0, particleCount = 0, uvVBO = null, vertCount = 0;
+let stateTex = [null, null], stateFBO = [null, null], cur = 0;
+
+function _makeStateTexture(dim){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); // exakte Werte lesen, NICHT interpolieren
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+function _makeFBO(tex){
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return fbo;
+}
+
+function setupParticles(count){
+  particleCount = count;
+  texDim = Math.ceil(Math.sqrt(count));
+  const texels = texDim * texDim;
+
+  const seed = new Float32Array(texels * 4);
+  for (let i = 0; i < count; i++) {
+    seed[i*4+0] = Math.random() * W;
+    seed[i*4+1] = Math.random() * H;
+    seed[i*4+2] = (Math.random()-0.5) * 2;
+    seed[i*4+3] = (Math.random()-0.5) * 2;
+  }
+
+  for (let k = 0; k < 2; k++) {
+    if (stateTex[k]) gl.deleteTexture(stateTex[k]);
+    if (stateFBO[k]) gl.deleteFramebuffer(stateFBO[k]);
+    stateTex[k] = _makeStateTexture(texDim);
+    gl.bindTexture(gl.TEXTURE_2D, stateTex[k]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texDim, texDim, 0, gl.RGBA, STATE_GLTYPE, seed);
+    stateFBO[k] = _makeFBO(stateTex[k]);
+  }
+  cur = 0;
+
+  // Statischer Vertex-Buffer: pro Partikel 2 Vertices mit derselben Textur-UV,
+  // unterschieden nur durch aEnd (Schweifende vs. aktuelle Position).
+  const uvData = new Float32Array(count * 2 * 3); // (u, v, end) je Vertex
+  for (let i = 0; i < count; i++) {
+    const ix = i % texDim, iy = Math.floor(i / texDim);
+    const u = (ix + 0.5) / texDim, v = (iy + 0.5) / texDim;
+    const o = i * 6;
+    uvData[o+0]=u; uvData[o+1]=v; uvData[o+2]=0; // Schweifende
+    uvData[o+3]=u; uvData[o+4]=v; uvData[o+5]=1; // aktuelle Position
+  }
+  if (uvVBO) gl.deleteBuffer(uvVBO);
+  uvVBO = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, uvVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, uvData, gl.STATIC_DRAW);
+  vertCount = count * 2;
+
+  // Statistik-Fenster neu ausrichten, damit kein Fenster über einen
+  // Partikelzahl-Wechsel hinweg läuft und mit der falschen Anzahl beschriftet wird.
+  _winStart = 0; _winSamples.length = 0;
+
+  console.log(`[GPGPU-PoC] setupParticles(${count.toLocaleString('de-DE')}) → texDim=${texDim} (${texels.toLocaleString('de-DE')} Texel, ${(texels*16/1048576).toFixed(1)} MB/Textur, Typ=${STATE_TYPE})`);
+}
+
+// ── Simulationsparameter (grobe Entsprechung zu S.speed/turb/damp/tscale) ───
+const params = { speed: 3.0, turb: 1.2, damp: 0.94, tscale: 0.6, tailLen: 2.2, trailAlpha: 0.07 };
+
+function stepPhysics(now){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, stateFBO[1-cur]);
+  gl.viewport(0, 0, texDim, texDim);
+  gl.disable(gl.BLEND); // Zustandswerte müssen exakt geschrieben werden, kein Blending
+  gl.useProgram(physProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+  gl.enableVertexAttribArray(physLoc.aPos);
+  gl.vertexAttribPointer(physLoc.aPos, 2, gl.FLOAT, false, 0, 0);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, stateTex[cur]);
+  gl.uniform1i(physLoc.uState, 0);
+  gl.uniform2f(physLoc.uResolution, W, H);
+  gl.uniform1f(physLoc.uTime, now*0.001);
+  gl.uniform1f(physLoc.uSpeed, params.speed);
+  gl.uniform1f(physLoc.uTurb, params.turb);
+  gl.uniform1f(physLoc.uDamp, params.damp);
+  gl.uniform1f(physLoc.uTscale, params.tscale);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  cur = 1 - cur;
+}
+
+function drawFrame(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, H);
+
+  // Trail-Fade: dünnes schwarzes Quad über das Vorbild blenden (gleiche Technik
+  // wie rebuildTrail()/clearCanvas() in particle-flow-v5.html)
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(fadeProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+  gl.enableVertexAttribArray(fadeLoc.aPos);
+  gl.vertexAttribPointer(fadeLoc.aPos, 2, gl.FLOAT, false, 0, 0);
+  gl.uniform1f(fadeLoc.uAlpha, params.trailAlpha);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // Partikel als Linienliste, Position/Geschwindigkeit per Vertex-Texture-Fetch
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additiv, wie additive:true im Original
+  gl.useProgram(renderProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, uvVBO);
+  gl.enableVertexAttribArray(renderLoc.aUv);
+  gl.vertexAttribPointer(renderLoc.aUv, 2, gl.FLOAT, false, 12, 0);
+  gl.enableVertexAttribArray(renderLoc.aEnd);
+  gl.vertexAttribPointer(renderLoc.aEnd, 1, gl.FLOAT, false, 12, 8);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, stateTex[cur]);
+  gl.uniform1i(renderLoc.uState, 0);
+  gl.uniform2f(renderLoc.uResolution, W, H);
+  gl.uniform1f(renderLoc.uTailLen, params.tailLen);
+  gl.drawArrays(gl.LINES, 0, vertCount);
+}
+
+// ── Performance-Messung ──────────────────────────────────────────────────
+// Gleiche Methodik wie der Partikelanzahl-Kalibrator in particle-flow-v5.html:
+// rohe (ungeglättete) Pro-Frame-FPS, Fenster-Durchschnitt + 10%-Low, damit
+// kurze Ruckler nicht weggemittelt werden.
+let _lastT = performance.now(), _fpsEma = 60;
+let _winStart = 0, _winSamples = [];
+const STAT_WINDOW = 2000;
+let _lastWinStats = null;
+// Log abgeschlossener Fenster, damit der Benchmark unten dieselben (korrekt
+// an frame()'s eigenen rAF-Takt gekoppelten) Messungen wiederverwenden kann,
+// statt selbst per separatem rAF-Loop gegen frame() um _lastT zu konkurrieren
+// — letzteres lieferte beim Test völlig falsche (zu hohe) FPS-Werte, weil die
+// beiden Loops nicht synchron liefen.
+let _winLog = [];
+
+function tickStats(now, instFps){
+  _fpsEma = _fpsEma*0.92 + instFps*0.08;
+  if (_winStart === 0) { _winStart = now; return; }
+  _winSamples.push(instFps);
+  if (now - _winStart < STAT_WINDOW) return;
+  const sorted = _winSamples.slice().sort((a,b)=>a-b);
+  const avg = sorted.reduce((a,b)=>a+b,0)/sorted.length;
+  const low10 = sorted[Math.floor(sorted.length*0.1)];
+  _lastWinStats = { count: particleCount, avg, low10, ts: now };
+  _winLog.push(_lastWinStats);
+  if (_winLog.length > 200) _winLog.shift();
+  console.log(`[GPGPU-PoC] N=${particleCount.toLocaleString('de-DE')} avgFps=${avg.toFixed(1)} low10Fps=${low10.toFixed(1)}`);
+  _winSamples.length = 0; _winStart = now;
+}
+
+function updateOverlay(){
+  const cls = _fpsEma < 30 ? 'bad' : _fpsEma < 50 ? 'warn' : 'good';
+  overlayEl.innerHTML =
+`GPGPU-Partikel-PoC — Texturtyp: ${STATE_TYPE}
+Partikel: ${particleCount.toLocaleString('de-DE')}  (Textur ${texDim}x${texDim})
+<span class="${cls}">FPS (EMA): ${_fpsEma.toFixed(1)}</span>${_lastWinStats ? `
+letztes Fenster: avg=${_lastWinStats.avg.toFixed(1)} low10=${_lastWinStats.low10.toFixed(1)}` : ''}
+MAX_VERTEX_TEXTURE_IMAGE_UNITS: ${caps.maxVertexTextures}${benchRunning ? '\n\n[Auto-Benchmark läuft…]' : ''}`;
+}
+
+// ── Hauptschleife ────────────────────────────────────────────────────────
+function frame(){
+  requestAnimationFrame(frame);
+  const now = performance.now();
+  const instFps = 1000/(now-_lastT);
+  _lastT = now;
+  tickStats(now, instFps);
+  stepPhysics(now);
+  drawFrame();
+  updateOverlay();
+}
+
+// ── Auto-Benchmark: Leiter aus Partikelzahlen, je Stufe messen, Ergebnis-
+//    Tabelle in Konsole + window.__benchResults, damit sich das auch ohne
+//    manuelle Bedienung (z.B. per Playwright) auswerten lässt. ─────────────
+let benchRunning = false, _benchAbort = false;
+window.__benchResults = null;
+
+async function runBenchmark(ladder = COUNT_LADDER, warmupMs = 2000, measureMs = 4000){
+  benchRunning = true; _benchAbort = false;
+  btnBench.disabled = true; btnStop.disabled = false;
+  const results = [];
+  for (const n of ladder) {
+    if (_benchAbort) break;
+    setupParticles(n);
+    selCount.value = n;
+    await new Promise(r => setTimeout(r, warmupMs)); // Aufwärmphase, JIT/Treiber einpendeln lassen
+    if (_benchAbort) break;
+    // Misst nicht selbst per eigenem rAF-Loop (das würde gegen frame()'s
+    // eigenen Takt um _lastT konkurrieren und falsche Werte liefern), sondern
+    // liest die von tickStats() bereits korrekt getakteten Fenster mit.
+    const logStartIdx = _winLog.length;
+    const start = performance.now();
+    while (performance.now() - start < measureMs) {
+      await new Promise(r => setTimeout(r, 100));
+      if (_benchAbort) break;
+    }
+    const windows = _winLog.slice(logStartIdx);
+    const avg = windows.length
+      ? windows.reduce((a,w) => a+w.avg, 0) / windows.length
+      : _fpsEma;
+    const low10 = windows.length
+      ? Math.min(...windows.map(w => w.low10))
+      : _fpsEma;
+    const row = { count: n, avgFps: +avg.toFixed(1), low10Fps: +low10.toFixed(1), samples: windows.length };
+    results.push(row);
+    console.log('[GPGPU-PoC][Benchmark]', JSON.stringify(row));
+    // Sicherheitsabbruch: bricht die Leiter früh ab, wenn eine Stufe schon
+    // praktisch eingefroren ist, statt minutenlang weitere (noch größere,
+    // noch langsamere) Stufen sinnlos durchzumessen.
+    if (avg < 5) { console.log('[GPGPU-PoC][Benchmark] Abbruch: avgFps < 5, weitere Stufen wären nur noch langsamer.'); break; }
+  }
+  window.__benchResults = results;
+  console.log('[GPGPU-PoC][Benchmark] Fertig:', JSON.stringify(results, null, 1));
+  benchRunning = false;
+  btnBench.disabled = false; btnStop.disabled = true;
+  return results;
+}
+window.__runBenchmark = runBenchmark;
+
+btnBench.addEventListener('click', () => runBenchmark());
+btnStop.addEventListener('click', () => { _benchAbort = true; });
+selCount.addEventListener('change', () => setupParticles(parseInt(selCount.value, 10)));
+
+// ── Start ────────────────────────────────────────────────────────────────
+setupParticles(parseInt(selCount.value, 10));
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
