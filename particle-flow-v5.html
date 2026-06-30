@@ -1218,10 +1218,10 @@ function animate() {
   }
   // Music energy tracking (cheap sample every ~10 frames)
   if(_audioCtx&&_musicOn&&(time%10===0)){
-    const sampleN=Math.min(200,COUNT),step=Math.max(1,COUNT/sampleN);
-    let eSum=0;
-    for(let i=0;i<COUNT;i+=step) eSum+=pVX[i]*pVX[i]+pVY[i]*pVY[i];
-    const raw=Math.sqrt(eSum/(COUNT/step))/SLIMIT;
+    const sampleN=Math.min(200,COUNT),step=Math.max(1,Math.round(COUNT/sampleN));
+    let eSum=0,nSamples=0;
+    for(let i=0;i<COUNT;i+=step){eSum+=pVX[i]*pVX[i]+pVY[i]*pVY[i];nSamples++;}
+    const raw=Math.sqrt(eSum/nSamples)/SLIMIT;
     _energyAvg=_energyAvg*.94+raw*.06;
     _updateMusicEnergy();
   }
