@@ -730,6 +730,12 @@ const S = {
   customStops: DEFAULTS.customStops.map(s=>({...s})),
   colorAnimList: DEFAULTS.colorAnimList.map(step=>({...step, ...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})})),
 };
+// Adaptive Partikelanzahl-Kalibrierung: Start immer bei COUNT_CALIB_START, unabhängig von DEFAULTS.count
+// — der Kalibrator (siehe _tickCountCalibrator) tastet sich von hier selbstständig nach oben.
+const COUNT_CALIB_START = 30000, COUNT_CALIB_STEP = 10000, COUNT_CALIB_MAX = 200000;
+const COUNT_CALIB_WINDOW = 2000; // ms je Messfenster (auch für die initiale Wartezeit)
+let _countCalib = { active: true, windowStart: 0, samples: [] };
+S.count = COUNT_CALIB_START;
 
 // ─── Animation parameter config ────────────────────────────────────────
 // Each entry drives the generic tick + UI system
@@ -1346,7 +1352,7 @@ function toggleMusic(){
 // ─── FPS ───────────────────────────────────────────────────────────────
 let _fps=60,_lastT=performance.now(),_fpsTimer=0;
 const elFps=document.getElementById('v-fps'),elDraws=document.getElementById('v-draws');
-function updatePerfDisplay(ab){const f=_fps|0;elFps.textContent=`${f} fps`;elFps.className=`fps-badge${f<30?' bad':f<50?' warn':''}`;elDraws.textContent=`${ab} Draw Calls / Frame · Physik 1/${physK}`;}
+function updatePerfDisplay(ab){const f=_fps|0;elFps.textContent=`${f} fps`;elFps.className=`fps-badge${f<30?' bad':f<50?' warn':''}`;elDraws.textContent=`${ab} Draw Calls / Frame · Physik 1/${physK}${_countCalib.active?' · Kalibriere Partikelanzahl…':''}`;}
 
 // ─── Generic Animation Tick ────────────────────────────────────────────
 // pauseKey-Einträge folgen dem Zyklus: [Pause bei Min] → [Min→Max→Min] → repeat
@@ -1429,11 +1435,50 @@ function _tickPerfGovernor(now){
   else if (_fps > 58.5 && physK > 2) { physK--; _physKLastChange = now; }
 }
 
+// ── Adaptive Partikelanzahl-Kalibrierung ─────────────────────────────────
+// Tastet S.count beim Start in COUNT_CALIB_STEP-Schritten von COUNT_CALIB_START nach oben,
+// solange die FPS nahe 60 bleiben — findet so automatisch die für die jeweilige Hardware
+// höchstmögliche Partikelzahl, statt eines für alle Geräte fest verdrahteten Werts.
+// Ziel: durchgehend ≥50fps, die 10%-Lows nicht darunter. Erlischt dauerhaft, sobald S.count
+// per Nutzeraktion verändert wird (Slider, Preset, Import, Surprise Me) — siehe _countCalibStop().
+function _countCalibStop(){ _countCalib.active = false; }
+function _syncCountUI(){
+  const sl=document.getElementById('s-count'), vl=document.getElementById('v-count');
+  if (sl) sl.value = S.count;
+  if (vl) vl.textContent = fi(S.count);
+}
+function _tickCountCalibrator(now, instFps){
+  if (!_countCalib.active) return;
+  if (_countCalib.windowStart === 0) { _countCalib.windowStart = now; return; } // erstes Messfenster startet hier
+  _countCalib.samples.push(instFps);
+  if (now - _countCalib.windowStart < COUNT_CALIB_WINDOW) return;
+
+  const sorted = _countCalib.samples.slice().sort((a,b)=>a-b);
+  const avg = sorted.reduce((a,b)=>a+b,0) / sorted.length;
+  const low10 = sorted[Math.floor(sorted.length*0.1)];
+  _countCalib.samples.length = 0;
+  _countCalib.windowStart = now;
+
+  if (avg >= 55 && low10 >= 50) {
+    // Noch Spielraum (nicht deutlich unter 60, 10%-Lows über 50) → weiter hochtasten
+    if (S.count >= COUNT_CALIB_MAX) { _countCalibStop(); return; }
+    S.count = Math.min(COUNT_CALIB_MAX, S.count + COUNT_CALIB_STEP);
+    _syncCountUI();
+  } else {
+    // Deutlich unter 60 gefallen bzw. 10%-Lows unter 50 → einen Schritt zurück und fixieren
+    S.count = Math.max(COUNT_CALIB_START, S.count - COUNT_CALIB_STEP);
+    _syncCountUI();
+    _countCalibStop();
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const now=performance.now();
-  _fps=_fps*.92+(1000/(now-_lastT))*.08; _lastT=now;
+  const _instFps=1000/(now-_lastT);
+  _fps=_fps*.92+_instFps*.08; _lastT=now;
   const doUI=_fpsTimer===0;
+  _tickCountCalibrator(now, _instFps);
 
   tickAnimations(now, doUI);
   tickColorAnim(now, doUI);
@@ -1588,7 +1633,7 @@ function animate() {
       const f=_fps|0;
       elFps.textContent=`${f} fps`;
       elFps.className=`fps-badge${f<30?' bad':f<50?' warn':''}`;
-      elDraws.textContent=`${_vboCount.toLocaleString('de-DE')} Linien · 1 Draw Call (WebGL) · Physik 1/${physK}`;
+      elDraws.textContent=`${_vboCount.toLocaleString('de-DE')} Linien · 1 Draw Call (WebGL) · Physik 1/${physK}${_countCalib.active?' · Kalibriere Partikelanzahl…':''}`;
       _fpsTimer=0;
     }
   } else {
@@ -1686,6 +1731,7 @@ function disableAnimOnTouch(key){
   if(key==='alpha'&&S.alphaAnim){S.alphaAnim=false;syncAnimToggle('alpha',false);}
   if(key==='trail'&&S.trailAnim){S.trailAnim=false;syncAnimToggle('trail',false);}
   if(key==='tscale'&&S.tscaleAnim){S.tscaleAnim=false;syncAnimToggle('tscale',false);}
+  if(key==='count') _countCalibStop(); // Nutzer hat die Partikelanzahl selbst gewählt → Kalibrierung erlischt
 }
 
 // Editable value click handler
@@ -1957,6 +2003,7 @@ document.getElementById('file-import').addEventListener('change',e=>{
       Object.assign(S,data);
       if(data.customStops) S.customStops=data.customStops.map(s=>({...s}));
       if(data.colorAnimList) S.colorAnimList=data.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})}));
+      _countCalibStop(); // Import legt eine eigene Partikelanzahl fest → Kalibrierung erlischt
       applyAllUI(); buildPalette(); rebuildTrail(); clearCanvas();
     }catch(err){alert('Fehler beim Importieren: '+err.message);}
     e.target.value='';
@@ -2069,6 +2116,9 @@ document.getElementById('btn-reset').addEventListener('click',()=>{
   Object.assign(S,DEFAULTS);
   S.customStops=DEFAULTS.customStops.map(s=>({...s}));
   S.colorAnimList=DEFAULTS.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})}));
+  // Zurücksetzen stellt auch das automatische Partikelanzahl-Hochtasten wieder her (wie beim Erststart)
+  S.count = COUNT_CALIB_START;
+  _countCalib = { active: true, windowStart: 0, samples: [] };
   applyAllUI(); buildPalette(); rebuildTrail(); clearCanvas();
 });
 
@@ -2136,6 +2186,7 @@ function _applyPreset(data){
   Object.assign(S, data);
   if(data.customStops) S.customStops=data.customStops.map(s=>({...s}));
   if(data.colorAnimList) S.colorAnimList=data.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})}));
+  _countCalibStop(); // Preset legt eine eigene Partikelanzahl fest → Kalibrierung erlischt
   applyAllUI(); buildPalette(); rebuildTrail(); clearCanvas();
 }
 // Errechnet die Schriftgröße (logische px), damit ein Wort genau in targetWidthPhysical (physische px) passt
@@ -2158,6 +2209,7 @@ document.getElementById('btn-preset-pc').addEventListener('click',()=>{
 });
 document.getElementById('btn-preset-phone').addEventListener('click',()=>{
   S.count=140000; S.life=380; S.alpha=1.2; S.speed=0.2; S.turb=3.5; S.trail=0.08; S.additive=true;
+  _countCalibStop(); // Preset legt eine eigene Partikelanzahl fest → Kalibrierung erlischt
   buildPalette(); rebuildTrail(); applyAllUI(); clearCanvas();
 });
 // Mobile-Preset: basiert auf dem Desktop-Preset, aber mit reduzierter Partikelanzahl. Die Textbreite
@@ -2179,6 +2231,7 @@ document.getElementById('btn-surprise').addEventListener('click',()=>{
   S.scheme=schemes[Math.random()*schemes.length|0];
   S.colorDrive=drives[Math.random()*drives.length|0];
   S.count=Math.round((30000+Math.random()*120000)/500)*500;
+  _countCalibStop(); // Surprise Me legt eine eigene Partikelanzahl fest → Kalibrierung erlischt
   S.life=Math.round((200+Math.random()*600)/10)*10;
   S.trail=+(0.02+Math.random()*0.12).toFixed(3);
   S.speed=+(0.05+Math.random()*0.4).toFixed(2);
