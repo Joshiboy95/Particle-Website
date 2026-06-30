@@ -913,9 +913,9 @@ function tickFireworks(now,doUI){
       const iMin=Math.min(S.fwksMinInterval,S.fwksMaxInterval),iMax=Math.max(S.fwksMinInterval,S.fwksMaxInterval);
       fwks.nextClickTime=now+iMin+Math.random()*(iMax-iMin);
       fwks.clicksDone++;
-      if(typeof playMusicNote==='function'&&_musicOn){
+      if(typeof playFireworkBoom==='function'&&_musicOn){
         const maxSq=Math.max(rawMax*rawMax,1);
-        playMusicNote(fwks.cStr/maxSq);
+        playFireworkBoom(fwks.cStr/maxSq);
       }
     }
     if(fwks.clicksDone>=fwks.totalClicks&&now>=fwks.cEnd){
@@ -946,50 +946,153 @@ let autoNextTime=0;
 const _autoBar=document.getElementById('auto-bar'),_autoStatus=document.getElementById('auto-status'),_autoNext=document.getElementById('auto-next');
 
 // ─── Music system ──────────────────────────────────────────────────────
-let _audioCtx=null,_masterGain=null,_filterNode=null,_musicOn=false;
-let _noteTimer=null,_energyAvg=0;
+let _audioCtx=null,_masterGain=null,_limiter=null,_filterNode=null,_highBus=null,_fxBus=null,_musicOn=false;
+let _noteTimer=null,_sparkleTimer=null,_energyAvg=0,_noiseBuf=null;
 const _PENTA=[65.41,73.42,82.41,98.00,110.00,130.81,146.83,164.81,196.00,220.00]; // C2 pentatonic
+
+function _getNoiseBuffer(){
+  if(_noiseBuf) return _noiseBuf;
+  const len=Math.floor(_audioCtx.sampleRate*1.0);
+  _noiseBuf=_audioCtx.createBuffer(1,len,_audioCtx.sampleRate);
+  const d=_noiseBuf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+  return _noiseBuf;
+}
 
 function _initAudio(){
   _audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-  _masterGain=_audioCtx.createGain(); _masterGain.gain.value=0; _masterGain.connect(_audioCtx.destination);
-  // Delay reverb
+  _masterGain=_audioCtx.createGain(); _masterGain.gain.value=0;
+  // Limiter: fängt Pegelspitzen ab, wenn viele Feuerwerk-Klicks/Sparkle-Grains gleichzeitig
+  // mit dem Drone-Layer summieren. Verhindert das hörbare Clipping/Übersteuern ("Stecker
+  // reinstecken"-Knacksen), das ohne Limiter bei dichten Feuerwerk-Bursts auftrat.
+  _limiter=_audioCtx.createDynamicsCompressor();
+  _limiter.threshold.value=-6; _limiter.knee.value=6; _limiter.ratio.value=14;
+  _limiter.attack.value=0.003; _limiter.release.value=0.18;
+  _masterGain.connect(_limiter); _limiter.connect(_audioCtx.destination);
+  // Delay reverb (gemeinsamer Hall für alle Layer)
   const dly=_audioCtx.createDelay(2.5); dly.delayTime.value=0.9;
-  const fb=_audioCtx.createGain(); fb.gain.value=0.38; dly.connect(fb); fb.connect(dly);
+  const fb=_audioCtx.createGain(); fb.gain.value=0.32; dly.connect(fb); fb.connect(dly);
   const dryG=_audioCtx.createGain(); dryG.gain.value=0.65;
   const wetG=_audioCtx.createGain(); wetG.gain.value=0.35;
-  // Filter
+  dly.connect(wetG); dryG.connect(_masterGain); wetG.connect(_masterGain);
+  // Low-Bus: gefiltert, energie-getrackt - das bisherige tiefe "Brummen" + tiefe Ambient-Noten
   _filterNode=_audioCtx.createBiquadFilter(); _filterNode.type='lowpass';
-  _filterNode.frequency.value=500; _filterNode.Q.value=1.4;
-  _filterNode.connect(dryG); _filterNode.connect(dly); dly.connect(wetG);
-  dryG.connect(_masterGain); wetG.connect(_masterGain);
+  _filterNode.frequency.value=500; _filterNode.Q.value=1.1;
+  _filterNode.connect(dryG); _filterNode.connect(dly);
+  // High-Bus: UMGEHT den Lowpass - sonst killt die energie-getrackte Cutoff (oft 180-500Hz)
+  // jede Helligkeit im Mix. Trägt Pad/hohe Noten/Sparkle.
+  _highBus=_audioCtx.createGain(); _highBus.gain.value=1;
+  _highBus.connect(dryG); _highBus.connect(dly);
+  // FX-Bus: für Feuerwerk-Booms, ebenfalls ungefiltert, damit der Sub-Thump unabhängig von
+  // der aktuellen Energie-Cutoff-Automation immer voll durchkommt.
+  _fxBus=_audioCtx.createGain(); _fxBus.gain.value=1;
+  _fxBus.connect(dryG); _fxBus.connect(dly);
+
   // Drone A1 55Hz
   const o1=_audioCtx.createOscillator(); o1.type='sine'; o1.frequency.value=55;
-  const g1=_audioCtx.createGain(); g1.gain.value=0.32; o1.connect(g1); g1.connect(_filterNode); o1.start();
+  const g1=_audioCtx.createGain(); g1.gain.value=0.30; o1.connect(g1); g1.connect(_filterNode); o1.start();
   // E2 82.4Hz perfect fifth
   const o2=_audioCtx.createOscillator(); o2.type='sine'; o2.frequency.value=82.4;
-  const g2=_audioCtx.createGain(); g2.gain.value=0.18; o2.connect(g2); g2.connect(_filterNode); o2.start();
+  const g2=_audioCtx.createGain(); g2.gain.value=0.16; o2.connect(g2); g2.connect(_filterNode); o2.start();
   // A2 110Hz slight detune for beating
   const o3=_audioCtx.createOscillator(); o3.type='triangle'; o3.frequency.value=110.3;
-  const g3=_audioCtx.createGain(); g3.gain.value=0.09; o3.connect(g3); g3.connect(_filterNode); o3.start();
+  const g3=_audioCtx.createGain(); g3.gain.value=0.08; o3.connect(g3); g3.connect(_filterNode); o3.start();
+
+  // Mid/High-Pad: zwei langsam "atmende" Lagen via sample-genauem LFO (Oszillator moduliert
+  // direkt den Gain-Wert) statt JS-Timing - macht aus dem Drone eine Komposition, die sich
+  // über die Zeit bewegt, statt einem einzigen durchgehenden Ton.
+  const o4=_audioCtx.createOscillator(); o4.type='sine'; o4.frequency.value=220;
+  const g4=_audioCtx.createGain(); g4.gain.value=0.05; o4.connect(g4); g4.connect(_highBus); o4.start();
+  const lfo1=_audioCtx.createOscillator(); lfo1.type='sine'; lfo1.frequency.value=0.045;
+  const lfo1Amt=_audioCtx.createGain(); lfo1Amt.gain.value=0.05;
+  lfo1.connect(lfo1Amt); lfo1Amt.connect(g4.gain); lfo1.start();
+
+  const o5=_audioCtx.createOscillator(); o5.type='triangle'; o5.frequency.value=329.63;
+  const g5=_audioCtx.createGain(); g5.gain.value=0.035; o5.connect(g5); g5.connect(_highBus); o5.start();
+  const lfo2=_audioCtx.createOscillator(); lfo2.type='sine'; lfo2.frequency.value=0.037;
+  const lfo2Amt=_audioCtx.createGain(); lfo2Amt.gain.value=0.035;
+  lfo2.connect(lfo2Amt); lfo2Amt.connect(g5.gain); lfo2.start();
 }
 function playMusicNote(strength){
   if(!_audioCtx||!_musicOn) return;
   // strength: optional 0..1, derived from firework click strength. Stärkere Klicks
   // -> eine Oktave höher + etwas lauter, bleibt aber im ruhigen/mystischen Rahmen.
+  // Mischung aus tiefen (Low-Bus) und hohen (High-Bus) Ambient-Noten statt nur eine Lage,
+  // damit es sich wie eine Komposition aus verschiedenen Tönen anhört.
   const s=strength==null?0:Math.max(0,Math.min(1,strength));
-  const octave=s>0.66?2:1;
+  const high=Math.random()<0.55;
+  const octave=high?(s>0.66?4:2):(s>0.66?2:1);
   const f=_PENTA[Math.random()*_PENTA.length|0]*octave;
-  const peak=0.14+s*0.10;
-  const osc=_audioCtx.createOscillator(); osc.type='sine'; osc.frequency.value=f;
+  const peak=(high?0.085:0.14)+s*(high?0.06:0.10);
+  const dur=high?2.2:4.0;
+  const osc=_audioCtx.createOscillator(); osc.type=high?'triangle':'sine'; osc.frequency.value=f;
   const env=_audioCtx.createGain(); const t=_audioCtx.currentTime;
-  env.gain.setValueAtTime(0,t); env.gain.linearRampToValueAtTime(peak,t+0.08);
-  env.gain.exponentialRampToValueAtTime(0.001,t+4.0);
-  osc.connect(env); env.connect(_filterNode); osc.start(t); osc.stop(t+4.5);
+  env.gain.setValueAtTime(0,t); env.gain.linearRampToValueAtTime(peak,t+(high?0.04:0.08));
+  env.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  osc.connect(env); env.connect(high?_highBus:_filterNode); osc.start(t); osc.stop(t+dur+0.5);
+}
+function playSparkle(){
+  // Glitzer/Sparkle-Textur: 2-4 kurze, helle Grains im hohen Register, leicht zeitversetzt.
+  if(!_audioCtx||!_musicOn) return;
+  const t=_audioCtx.currentTime;
+  const n=2+Math.floor(Math.random()*3);
+  for(let k=0;k<n;k++){
+    const t0=t+k*0.05+Math.random()*0.03;
+    const f=1100+Math.random()*3200;
+    const osc=_audioCtx.createOscillator(); osc.type='sine'; osc.frequency.value=f;
+    const env=_audioCtx.createGain();
+    env.gain.setValueAtTime(0,t0);
+    env.gain.linearRampToValueAtTime(0.035+Math.random()*0.035,t0+0.008);
+    env.gain.exponentialRampToValueAtTime(0.001,t0+0.35+Math.random()*0.35);
+    osc.connect(env); env.connect(_highBus);
+    osc.start(t0); osc.stop(t0+0.9);
+  }
+}
+function playFireworkBoom(strength){
+  // "Dumpfes Platzen": Sub-Bass-Thump (Pitch-Drop) + gefilterter Noise-Burst (Schockwelle,
+  // hoch->tief gewedelt) + kurzer metallischer Ring-Oberton ("Platte"-Echo). Ersetzt die
+  // bisherige saubere Sinus-Note, die nicht nach einer Explosion klang.
+  if(!_audioCtx||!_musicOn) return;
+  const s=strength==null?0:Math.max(0,Math.min(1,strength));
+  const t=_audioCtx.currentTime;
+
+  const thump=_audioCtx.createOscillator(); thump.type='sine';
+  thump.frequency.setValueAtTime(95+s*45,t);
+  thump.frequency.exponentialRampToValueAtTime(28,t+0.32);
+  const thumpEnv=_audioCtx.createGain();
+  thumpEnv.gain.setValueAtTime(0,t); thumpEnv.gain.linearRampToValueAtTime(0.35+s*0.20,t+0.01);
+  thumpEnv.gain.exponentialRampToValueAtTime(0.001,t+0.55);
+  thump.connect(thumpEnv); thumpEnv.connect(_fxBus);
+  thump.start(t); thump.stop(t+0.6);
+
+  const noiseSrc=_audioCtx.createBufferSource(); noiseSrc.buffer=_getNoiseBuffer();
+  const bp=_audioCtx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=1.8;
+  bp.frequency.setValueAtTime(2200,t); bp.frequency.exponentialRampToValueAtTime(110,t+0.38);
+  const noiseEnv=_audioCtx.createGain();
+  noiseEnv.gain.setValueAtTime(0,t); noiseEnv.gain.linearRampToValueAtTime(0.22+s*0.15,t+0.006);
+  noiseEnv.gain.exponentialRampToValueAtTime(0.001,t+0.45);
+  noiseSrc.connect(bp); bp.connect(noiseEnv); noiseEnv.connect(_fxBus);
+  noiseSrc.start(t); noiseSrc.stop(t+0.5);
+
+  const ring=_audioCtx.createOscillator(); ring.type='triangle';
+  ring.frequency.setValueAtTime(780+s*150,t); ring.frequency.exponentialRampToValueAtTime(420,t+0.4);
+  const ringEnv=_audioCtx.createGain();
+  ringEnv.gain.setValueAtTime(0,t); ringEnv.gain.linearRampToValueAtTime(0.10+s*0.06,t+0.015);
+  ringEnv.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+  ring.connect(ringEnv); ringEnv.connect(_fxBus);
+  ring.start(t); ring.stop(t+0.55);
 }
 function _scheduleNote(){
   clearTimeout(_noteTimer);
   _noteTimer=setTimeout(()=>{if(_musicOn){playMusicNote();_scheduleNote();}},4000+Math.random()*9000);
+}
+function _scheduleSparkle(){
+  clearTimeout(_sparkleTimer);
+  // Mehr Partikel-Energie -> dichtere Sparkle-Einsätze, damit sich der Glitzer-Layer
+  // tatsächlich an der Partikelströmung orientiert statt nur den Lowpass zu modulieren.
+  const density=Math.max(0,1-Math.min(1,_energyAvg*1.5));
+  const base=2200+density*3500;
+  _sparkleTimer=setTimeout(()=>{if(_musicOn){playSparkle();_scheduleSparkle();}},base+Math.random()*1800);
 }
 function _updateMusicEnergy(){
   if(!_audioCtx||!_filterNode) return;
@@ -1003,7 +1106,7 @@ function toggleMusic(){
   _masterGain.gain.setTargetAtTime(_musicOn?0.7:0,_audioCtx.currentTime,_musicOn?1.2:0.6);
   if(_audioCtx.state==='suspended') _audioCtx.resume();
   btn.classList.toggle('active',_musicOn);
-  if(_musicOn) _scheduleNote(); else clearTimeout(_noteTimer);
+  if(_musicOn){_scheduleNote();_scheduleSparkle();} else {clearTimeout(_noteTimer);clearTimeout(_sparkleTimer);}
 }
 
 // ─── FPS ───────────────────────────────────────────────────────────────
