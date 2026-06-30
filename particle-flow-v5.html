@@ -733,8 +733,9 @@ const S = {
 // Adaptive Partikelanzahl-Kalibrierung: Start immer bei COUNT_CALIB_START, unabhängig von DEFAULTS.count
 // — der Kalibrator (siehe _tickCountCalibrator) tastet sich von hier selbstständig nach oben.
 const COUNT_CALIB_START = 30000, COUNT_CALIB_STEP = 10000, COUNT_CALIB_MAX = 200000;
-const COUNT_CALIB_WINDOW = 2000; // ms je Messfenster (auch für die initiale Wartezeit)
-let _countCalib = { active: true, windowStart: 0, samples: [] };
+const COUNT_CALIB_WINDOW = 4000; // ms je Messfenster (auch für die initiale Wartezeit)
+const COUNT_CALIB_MAX_FAILS = 3; // so viele Fehlversuche in Folge auf derselben Stufe, bevor zurückgerudert wird (gibt der höheren Stufe eine Chance, falls es nur ein kurzzeitiger Hänger war)
+let _countCalib = { active: true, windowStart: 0, samples: [], fails: 0 };
 S.count = COUNT_CALIB_START;
 
 // ─── Animation parameter config ────────────────────────────────────────
@@ -1441,6 +1442,14 @@ function _tickPerfGovernor(now){
 // höchstmögliche Partikelzahl, statt eines für alle Geräte fest verdrahteten Werts.
 // Ziel: durchgehend ≥50fps, die 10%-Lows nicht darunter. Erlischt dauerhaft, sobald S.count
 // per Nutzeraktion verändert wird (Slider, Preset, Import, Surprise Me) — siehe _countCalibStop().
+//
+// Misst bewusst die rohe, ungeglättete Pro-Frame-FPS (instFps) statt der geglätteten _fps-EMA:
+// ein EMA würde kurze Ruckler genau wegmitteln, also die Sache verschleiern, die hier erkannt
+// werden soll. Zusätzlich gilt eine Messung nur dann als "gesund", wenn physK<=2 ist — steigt
+// der Performance-Governor auf physK 3/4 (weniger Physik-Updates pro Partikel und Frame), sieht
+// die reine Frame-Rate weiterhin gut aus, obwohl sich jedes einzelne Partikel spürbar ruckliger
+// bewegt. Ohne dieses Gate würde der Kalibrator genau die Partikelzahl als "sicher" einstufen,
+// bei der der Governor schon zum Strecken der Physik-Updates greifen musste.
 function _countCalibStop(){ _countCalib.active = false; }
 function _syncCountUI(){
   const sl=document.getElementById('s-count'), vl=document.getElementById('v-count');
@@ -1459,13 +1468,18 @@ function _tickCountCalibrator(now, instFps){
   _countCalib.samples.length = 0;
   _countCalib.windowStart = now;
 
-  if (avg >= 55 && low10 >= 50) {
-    // Noch Spielraum (nicht deutlich unter 60, 10%-Lows über 50) → weiter hochtasten
+  if (avg >= 55 && low10 >= 50 && physK <= 2) {
+    // Noch Spielraum (nicht deutlich unter 60, 10%-Lows über 50, keine Physik-Streckung) → weiter hochtasten
+    _countCalib.fails = 0;
     if (S.count >= COUNT_CALIB_MAX) { _countCalibStop(); return; }
     S.count = Math.min(COUNT_CALIB_MAX, S.count + COUNT_CALIB_STEP);
     _syncCountUI();
   } else {
-    // Deutlich unter 60 gefallen bzw. 10%-Lows unter 50 → einen Schritt zurück und fixieren
+    // Fenster nicht bestanden — evtl. nur ein kurzzeitiger Hänger (z.B. Tab-Wechsel, GC-Pause).
+    // Erst nach COUNT_CALIB_MAX_FAILS aufeinanderfolgenden Fehlversuchen auf dieser Stufe wird
+    // wirklich zurückgerudert — die höhere Stufe bekommt also mehrere Chancen, sich zu bestätigen.
+    _countCalib.fails++;
+    if (_countCalib.fails < COUNT_CALIB_MAX_FAILS) return;
     S.count = Math.max(COUNT_CALIB_START, S.count - COUNT_CALIB_STEP);
     _syncCountUI();
     _countCalibStop();
@@ -2118,7 +2132,7 @@ document.getElementById('btn-reset').addEventListener('click',()=>{
   S.colorAnimList=DEFAULTS.colorAnimList.map(step=>({...step,...(step.customStops?{customStops:step.customStops.map(s=>({...s}))}:{})}));
   // Zurücksetzen stellt auch das automatische Partikelanzahl-Hochtasten wieder her (wie beim Erststart)
   S.count = COUNT_CALIB_START;
-  _countCalib = { active: true, windowStart: 0, samples: [] };
+  _countCalib = { active: true, windowStart: 0, samples: [], fails: 0 };
   applyAllUI(); buildPalette(); rebuildTrail(); clearCanvas();
 });
 
