@@ -1346,7 +1346,7 @@ function toggleMusic(){
 // ─── FPS ───────────────────────────────────────────────────────────────
 let _fps=60,_lastT=performance.now(),_fpsTimer=0;
 const elFps=document.getElementById('v-fps'),elDraws=document.getElementById('v-draws');
-function updatePerfDisplay(ab){const f=_fps|0;elFps.textContent=`${f} fps`;elFps.className=`fps-badge${f<30?' bad':f<50?' warn':''}`;elDraws.textContent=`${ab} Draw Calls / Frame`;}
+function updatePerfDisplay(ab){const f=_fps|0;elFps.textContent=`${f} fps`;elFps.className=`fps-badge${f<30?' bad':f<50?' warn':''}`;elDraws.textContent=`${ab} Draw Calls / Frame · Physik 1/${physK}`;}
 
 // ─── Generic Animation Tick ────────────────────────────────────────────
 // pauseKey-Einträge folgen dem Zyklus: [Pause bei Min] → [Min→Max→Min] → repeat
@@ -1409,6 +1409,26 @@ function fmtFn(name){
 const SLIMIT=11,SLIM2=SLIMIT*SLIMIT;
 let time=0;
 
+// ── Kraft-Cutoff: jenseits dieser Distanz ist mag=stärke/(d2+softening) visuell nicht mehr
+// wahrnehmbar (≤ FORCE_EPS px/frame²) → sqrt()+Kraftberechnung pro Partikel überspringen.
+// Größter Hebel bei mehreren simultanen Kraftquellen (Komet ×8 + Auto-Klick + Feuerwerk),
+// da diese bisher jede COUNT-mal/Frame ungeachtet der Distanz ein sqrt() ausgeführt haben.
+const FORCE_EPS = 0.02;
+function _forceCutoffR2(strength, softening){ return strength>0 ? Math.max(0, strength/FORCE_EPS - softening) : 0; }
+const _cometMaxR2 = new Float32Array(COMET_POOL_MAX);
+
+// ── Adaptiver Performance-Governor ───────────────────────────────────────
+// Passt den Staffelungsfaktor (physK: nur 1/physK der Partikel bekommt Physik-Update/Frame)
+// in Echtzeit an die gemessene Framerate an, statt eines fest verdrahteten K=2.
+// Garantiert "konstante 60 FPS" über sehr unterschiedliche Hardware (Desktop-GPU vs. Handy)
+// hinweg, indem bei Last zuerst an der (laut Profiling visuell günstigsten) Stelle gespart wird.
+let physK = 2, _physKLastChange = 0;
+function _tickPerfGovernor(now){
+  if (now - _physKLastChange < 1500) return; // Hysterese: nicht öfter als alle 1.5s ändern
+  if (_fps < 54 && physK < 4) { physK++; _physKLastChange = now; }
+  else if (_fps > 58.5 && physK > 2) { physK--; _physKLastChange = now; }
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const now=performance.now();
@@ -1464,20 +1484,29 @@ function animate() {
   // Platzeffekt: 1. Hälfte der Klickdauer anziehend, 2. Hälfte abstoßend (Vorzeichen-Umkehr)
   const fwksSign=(fwksActive&&S.fwksBurstOn&&now>=fwks.cStart+(fwks.cEnd-fwks.cStart)*0.5)?-1:1;
   const cometForces=S.cometOn?cometPool:EMPTY_ARR,cometN=cometForces.length;
+  for(let k=0;k<cometN;k++) _cometMaxR2[k]=_forceCutoffR2(cometForces[k].frameStr,500);
+  // Cutoff-Radien der übrigen Punkt-Kräfte (0 = Kraft inaktiv, Bedingung greift dann nie)
+  const clickMaxR2 = hasForce ? _forceCutoffR2(grav,500) : 0;
+  const crMaxR2 = doPassiveRepel ? Math.min(_crRad2, _forceCutoffR2(_crStr,300)) : 0;
+  const autoMaxR2 = autoOn ? _forceCutoffR2(autoGr,500) : 0;
+  const fwksMaxR2 = fwksActive ? _forceCutoffR2(fwks.cStr,500) : 0;
   // Text gravity: rebuild field if dirty, then cache lookup scale
   if (_textDirty) { buildTextField(); _textDirty = false; }
   const textOn = _textActive && S.textGravStr > 0;
   const textGS = S.textGravStr * 0.001; // scale: slider 200 → force 0.2 px/frame²
 
-  // ── Gestaffelte Physik (K=2) ────────────────────────────────────────────
-  // Jede zweite Frame-Hälfte der Partikel updaten, alternierend.
+  // ── Gestaffelte Physik (adaptives K) ────────────────────────────────────
+  // Nur 1/physK der Partikel bekommt pro Frame ein Physik-Update, alternierend durchrotierend.
   // Auf glatten Curl-Noise-Feldern unsichtbar weil:
   //  • Typische Geschwindigkeiten (1-5 px/frame) → 1-Frame-Freeze unter Wahrnehmungsgrenze
   //  • Trail-Fade (94%/Frame) blendet eingefrorene Linie natürlich aus
-  //  • 100k Partikeldichte macht Einzelpartikel-Artefakte unsichtbar
-  const half = COUNT >> 1;           // COUNT/2, Integer-Division via Bit-Shift
-  const phyS = (time & 1) * half;   // 0 oder half, wechselt jeden Frame
-  const phyE = phyS + half;
+  //  • Hohe Partikeldichte macht Einzelpartikel-Artefakte unsichtbar
+  // physK passt sich laufend an die gemessene FPS an (siehe _tickPerfGovernor) — bei Last
+  // wird zuerst hier gespart, bevor die Framerate einbricht.
+  _tickPerfGovernor(now);
+  const segLen = Math.ceil(COUNT / physK);
+  const phyS = (time % physK) * segLen;
+  const phyE = Math.min(phyS + segLen, COUNT);
 
   for(let b=0;b<N_TOTAL;b++) bLen[b]=0; // Canvas 2D Fallback Reset (kein Overhead bei WebGL)
 
@@ -1489,11 +1518,11 @@ function animate() {
       sampleFieldInto(pX[i],pY[i]);
       pVX[i]+=_fx*spdScale; pVY[i]+=_fy*spdScale;
 
-      if(hasForce){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=grav/(d2+500),s=doAtt?1:-1;pVX[i]+=(dx/d)*mag*s;pVY[i]+=(dy/d)*mag*s;}}
-      else if(doPassiveRepel){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1&&d2<_crRad2){const d=Math.sqrt(d2),mag=_crStr/(d2+300);pVX[i]-=(dx/d)*mag;pVY[i]-=(dy/d)*mag;}}
-      if(autoOn){const dx=autoAX-pX[i],dy=autoAY-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=autoGr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
-      if(fwksActive){const dx=fwks.cx-pX[i],dy=fwks.cy-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=fwks.cStr/(d2+500)*fwksSign;pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
-      for(let k=0;k<cometN;k++){const c=cometForces[k],dx=c.cx-pX[i],dy=c.cy-pY[i],d2=dx*dx+dy*dy;if(d2>1){const d=Math.sqrt(d2),mag=c.frameStr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
+      if(hasForce){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1&&d2<clickMaxR2){const d=Math.sqrt(d2),mag=grav/(d2+500),s=doAtt?1:-1;pVX[i]+=(dx/d)*mag*s;pVY[i]+=(dy/d)*mag*s;}}
+      else if(doPassiveRepel){const dx=mx-pX[i],dy=my-pY[i],d2=dx*dx+dy*dy;if(d2>1&&d2<crMaxR2){const d=Math.sqrt(d2),mag=_crStr/(d2+300);pVX[i]-=(dx/d)*mag;pVY[i]-=(dy/d)*mag;}}
+      if(autoOn){const dx=autoAX-pX[i],dy=autoAY-pY[i],d2=dx*dx+dy*dy;if(d2>1&&d2<autoMaxR2){const d=Math.sqrt(d2),mag=autoGr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
+      if(fwksActive){const dx=fwks.cx-pX[i],dy=fwks.cy-pY[i],d2=dx*dx+dy*dy;if(d2>1&&d2<fwksMaxR2){const d=Math.sqrt(d2),mag=fwks.cStr/(d2+500)*fwksSign;pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
+      for(let k=0;k<cometN;k++){const c=cometForces[k],dx=c.cx-pX[i],dy=c.cy-pY[i],d2=dx*dx+dy*dy;if(d2>1&&d2<_cometMaxR2[k]){const d=Math.sqrt(d2),mag=c.frameStr/(d2+500);pVX[i]+=(dx/d)*mag;pVY[i]+=(dy/d)*mag;}}
 
       if(textOn){
         const fc=Math.max(0,Math.min((pX[i]/W)*(TC-1),TC-1.001));
@@ -1559,7 +1588,7 @@ function animate() {
       const f=_fps|0;
       elFps.textContent=`${f} fps`;
       elFps.className=`fps-badge${f<30?' bad':f<50?' warn':''}`;
-      elDraws.textContent=`${_vboCount.toLocaleString('de-DE')} Linien · 1 Draw Call (WebGL)`;
+      elDraws.textContent=`${_vboCount.toLocaleString('de-DE')} Linien · 1 Draw Call (WebGL) · Physik 1/${physK}`;
       _fpsTimer=0;
     }
   } else {
