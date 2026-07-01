@@ -781,7 +781,7 @@ let _rafId = null; // rAF handle for the realtime preview loop — recording pau
 const BG = '#07070f';
 const BG_R = 7/255, BG_G = 7/255, BG_B = 15/255;
 let W = 0, H = 0;
-let _recRenderW = 0, _recRenderH = 0; // oversampled render dims during recording (0 = use W/H)
+var _recRenderW = 0, _recRenderH = 0; // oversampled render dims during recording (0 = use W/H)
 
 let _dpr = 1; // devicePixelRatio, einmalig gesetzt
 
