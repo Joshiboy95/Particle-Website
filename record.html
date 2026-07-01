@@ -3039,7 +3039,7 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   subEl.textContent = 'Initialisiere Encoder…';
   const muxer = new Mp4Muxer.Muxer({
     target: new Mp4Muxer.ArrayBufferTarget(),
-    video: { codec: 'avc', width: recW, height: recH },
+    video: { codec: 'avc', width: recW, height: recH, frameRate: 60 },
     fastStart: 'in-memory',
     firstTimestampBehavior: 'offset',
   });
@@ -3068,7 +3068,7 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
       duration: Math.round(1_000_000 / 60),
       colorSpace: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false },
     });
-    encoder.encode(frame, { keyFrame: f % 60 === 0 }); // keyframe every 1 s for NLE scrubbing
+    encoder.encode(frame, { keyFrame: f < 5 || f % 60 === 0 }); // IDR at start + every 1 s
     frame.close();
 
     if (f % 30 === 0) {
