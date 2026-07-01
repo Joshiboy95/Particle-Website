@@ -3039,12 +3039,19 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   subEl.textContent = 'Initialisiere Encoder…';
   const muxer = new Mp4Muxer.Muxer({
     target: new Mp4Muxer.ArrayBufferTarget(),
-    video: { codec: 'avc', width: recW, height: recH, frameRate: 60 },
+    video: { codec: 'avc', width: recW, height: recH },
     fastStart: 'in-memory',
     firstTimestampBehavior: 'offset',
   });
+  // Manually anchor timestamps: subtract the first chunk's DTS from all
+  // subsequent ones so the file always starts at t=0 with exact 60fps deltas,
+  // regardless of how many frames the encoder buffers before its first output.
+  let _firstChunkTs = null;
   const encoder = new VideoEncoder({
-    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    output: (chunk, meta) => {
+      if (_firstChunkTs === null) _firstChunkTs = chunk.timestamp;
+      muxer.addVideoChunk(chunk, meta, chunk.timestamp - _firstChunkTs);
+    },
     error: e => console.error('[Encoder]', e),
   });
   encoder.configure(encCfg);
