@@ -2993,6 +2993,7 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10) {
     target: new Mp4Muxer.ArrayBufferTarget(),
     video: { codec: 'avc', width: recW, height: recH },
     fastStart: 'in-memory',
+    firstTimestampBehavior: 'offset',  // encoder buffers B-frames so first chunk DTS ≠ 0
   });
   const encoder = new VideoEncoder({
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
