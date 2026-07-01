@@ -3084,6 +3084,17 @@ function _animTickRec(now) {
 
 // ── Main recording orchestration ─────────────────────────────────────────
 async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversample = 1) {
+  const _t0 = performance.now();
+  const _log  = (...a) => console.log( '%c[REC]', 'color:#60a5fa;font-weight:bold', ...a);
+  const _warn = (...a) => console.warn('%c[REC]', 'color:#fbbf24;font-weight:bold', ...a);
+  const _err  = (...a) => console.error('%c[REC]', 'color:#f87171;font-weight:bold', ...a);
+  const _ts   = () => `+${((performance.now()-_t0)/1000).toFixed(2)}s`;
+
+  _log(`── Recording started ──`);
+  _log(`Resolution: ${recW}×${recH}  Oversample: ${oversample}×  Render: ${Math.round(recW*oversample)}×${Math.round(recH*oversample)}`);
+  _log(`Duration: ${durSec}s  Frames: ${Math.round(durSec*60)}  Warmup: ${warmupSec}s  Bitrate: ${mbps} Mbps`);
+  _log(`Post-processing: shadows=${_recShadows} highlights=${_recHighlights} contrast=${_recContrast} sharpness=${_recSharpness}`);
+
   // ── Codec support check ───────────────────────────────────────────────
   const encCfg = {
     codec: 'avc1.640034', width: recW, height: recH,
@@ -3098,7 +3109,9 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   try {
     const sup = await VideoEncoder.isConfigSupported(encCfg);
     if (!sup.supported) throw new Error('not supported');
-  } catch(_) {
+    _log(`Codec supported ✓  config:`, sup.config);
+  } catch(e) {
+    _err(`Codec not supported:`, e);
     document.getElementById('rec-compat-msg').style.display = '';
     document.getElementById('rec-compat-msg').textContent =
       `⚠ H.264 High Profile Level 5.2 (4K@60fps) wird von diesem System nicht unterstützt.`;
@@ -3117,6 +3130,7 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   // Save current canvas size + stop realtime loop
   const prevW = W, prevH = H;
   cancelAnimationFrame(_rafId);
+  _log(`${_ts()} Canvas setup: preview was ${prevW}×${prevH}, switching to render ${Math.round(recW*oversample)}×${Math.round(recH*oversample)} (sim ${recW}×${recH})`);
 
   // Simulation runs in output-resolution coordinate space (recW × recH).
   // Oversampling only grows the GL rasterizer viewport — same clip-space
@@ -3140,6 +3154,7 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
     outCtx = outCanvas.getContext('2d');
     outCtx.imageSmoothingEnabled = true;
     outCtx.imageSmoothingQuality = 'high';
+    _log(`${_ts()} Oversample downscale canvas created: ${recW}×${recH}`);
   }
 
   const totalFrames = Math.round(durSec * 60);
@@ -3147,13 +3162,15 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
 
   // ── Warmup: run configurable pre-roll so particles fill the new resolution ──
   const warmupFrames = Math.round(warmupSec * 60);
+  _log(`${_ts()} Warmup: ${warmupFrames} frames (${warmupSec}s)`);
   subEl.textContent = warmupFrames > 0 ? 'Simulation wird warmgelaufen…' : 'Simulation wird vorbereitet…';
   statEl.textContent = '';
   fillEl.style.background = 'rgba(255,255,255,.2)';
   let recNow = 0;
+  const _warmupT0 = performance.now();
   let _warmupYieldMs = Date.now();
   for (let f = 0; f < warmupFrames; f++) {
-    if (_recState.cancelled) { _abortRecording(prevW, prevH); return; }
+    if (_recState.cancelled) { _log(`${_ts()} Cancelled during warmup at frame ${f}`); _abortRecording(prevW, prevH); return; }
     _animTickRec(recNow); recNow += DT;
     const wNow = Date.now();
     if (wNow - _warmupYieldMs >= 200) {
@@ -3163,11 +3180,13 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
       await new Promise(r => setTimeout(r, 0));
     }
   }
+  _log(`${_ts()} Warmup done in ${((performance.now()-_warmupT0)/1000).toFixed(2)}s`);
   fillEl.style.background = '#3b82f6';
 
   // ── Setup encoder + muxer (in-memory, saved to Downloads automatically) ─
   const osLabel = oversample > 1 ? ` · ${oversample}× OS` : '';
   subEl.textContent = 'Initialisiere Encoder…';
+  _log(`${_ts()} Initialising muxer (mp4, avc, ${recW}×${recH}, fastStart in-memory)`);
   const muxer = new Mp4Muxer.Muxer({
     target: new Mp4Muxer.ArrayBufferTarget(),
     video: { codec: 'avc', width: recW, height: recH },
@@ -3178,21 +3197,42 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   // subsequent ones so the file always starts at t=0 with exact 60fps deltas,
   // regardless of how many frames the encoder buffers before its first output.
   let _firstChunkTs = null;
+  let _chunkCount = 0;
   const encoder = new VideoEncoder({
     output: (chunk, meta) => {
-      if (_firstChunkTs === null) _firstChunkTs = chunk.timestamp;
-      muxer.addVideoChunk(chunk, meta, chunk.timestamp - _firstChunkTs);
+      if (_firstChunkTs === null) {
+        _firstChunkTs = chunk.timestamp;
+        _log(`${_ts()} First chunk received: type=${chunk.type} ts=${chunk.timestamp}µs dts_offset=${chunk.timestamp} → anchored to 0`);
+      }
+      _chunkCount++;
+      if (_chunkCount <= 5 || _chunkCount % 300 === 0) {
+        _log(`${_ts()} Chunk #${_chunkCount}: type=${chunk.type} ts=${((chunk.timestamp-_firstChunkTs)/1e6).toFixed(3)}s size=${(chunk.byteLength/1024).toFixed(1)}KB queueSize=${encoder.encodeQueueSize}`);
+      }
+      try {
+        muxer.addVideoChunk(chunk, meta, chunk.timestamp - _firstChunkTs);
+      } catch(e) {
+        _err(`${_ts()} muxer.addVideoChunk failed at chunk #${_chunkCount}:`, e);
+      }
     },
-    error: e => console.error('[Encoder]', e),
+    error: e => _err(`${_ts()} VideoEncoder error:`, e),
   });
-  encoder.configure(encCfg);
+  _log(`${_ts()} Configuring encoder:`, encCfg);
+  try {
+    encoder.configure(encCfg);
+    _log(`${_ts()} Encoder configured  state=${encoder.state}`);
+  } catch(e) {
+    _err(`${_ts()} encoder.configure() threw:`, e);
+    _abortRecording(prevW, prevH);
+    return;
+  }
 
   // ── Frame loop ───────────────────────────────────────────────────────
   subEl.textContent = `${recW}×${recH}${osLabel} · ${mbps} Mbps · ${durSec} s`;
+  _log(`${_ts()} Frame loop start: ${totalFrames} frames`);
   const wallStart = Date.now();
   let _lastYieldMs = wallStart;
   for (let f = 0; f < totalFrames; f++) {
-    if (_recState.cancelled) break;
+    if (_recState.cancelled) { _log(`${_ts()} Cancelled at frame ${f}/${totalFrames}`); break; }
 
     // Non-blocking backpressure: yield once if encoder is heavily backed up.
     // A spin-wait here (while queue > N, sleep 2ms) would serialize the whole
@@ -3207,12 +3247,25 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
     const frameSource = hasPP ? _applyPP(outCanvas, recW, recH) : outCanvas;
 
     const ts = Math.round(f * 1_000_000 / 60);
-    const frame = new VideoFrame(frameSource, {
-      timestamp: ts,
-      duration: Math.round(1_000_000 / 60),
-      colorSpace: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false },
-    });
-    encoder.encode(frame, { keyFrame: f < 5 || f % 60 === 0 }); // IDR at start + every 1 s
+    let frame;
+    try {
+      frame = new VideoFrame(frameSource, {
+        timestamp: ts,
+        duration: Math.round(1_000_000 / 60),
+        colorSpace: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false },
+      });
+    } catch(e) {
+      _err(`${_ts()} VideoFrame creation failed at frame ${f}:`, e);
+      break;
+    }
+    const isKey = f < 5 || f % 60 === 0;
+    try {
+      encoder.encode(frame, { keyFrame: isKey });
+    } catch(e) {
+      _err(`${_ts()} encoder.encode() failed at frame ${f}:`, e);
+      frame.close();
+      break;
+    }
     frame.close();
 
     // UI updates: time-based (every ~200 ms) instead of every N frames,
@@ -3233,35 +3286,50 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
       if (elapsedSec > 5 && +renderFps < 15) {
         subEl.textContent = `⚠ Langsam (~${renderFps} fps) — Hardware-Beschleunigung prüfen: chrome://gpu`;
       }
+      _log(`${_ts()} f=${f}/${totalFrames} fps=${renderFps} queueSize=${encoder.encodeQueueSize} chunks=${_chunkCount} hasPP=${hasPP}`);
       await new Promise(r => setTimeout(r, 0));
     }
   }
 
   fillEl.style.width = '100%';
   if (!_recState.cancelled) {
+    _log(`${_ts()} Frame loop done — ${_chunkCount} chunks received so far. Flushing encoder…`);
     subEl.textContent = 'Datei wird finalisiert…';
     statEl.textContent = '';
     infoEl.textContent = 'Encoder leert Puffer…';
     await new Promise(r => setTimeout(r, 0));
-    await encoder.flush();
-    muxer.finalize();
+    try {
+      await encoder.flush();
+      _log(`${_ts()} Encoder flushed — total chunks: ${_chunkCount}  firstChunkTs: ${_firstChunkTs}`);
+    } catch(e) {
+      _err(`${_ts()} encoder.flush() failed:`, e);
+    }
+    try {
+      muxer.finalize();
+      _log(`${_ts()} Muxer finalized — buffer size: ${(muxer.target.buffer.byteLength/1_000_000).toFixed(2)} MB`);
+    } catch(e) {
+      _err(`${_ts()} muxer.finalize() failed:`, e);
+    }
     const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+    const filename = `particle-flow-${recW}x${recH}-${durSec}s.mp4`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `particle-flow-${recW}x${recH}-${durSec}s.mp4`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 30000);
     const wallSec = ((Date.now() - wallStart) / 1000).toFixed(0);
-    const sizeMB = (blob.size / 1_000_000).toFixed(0);
+    const sizeMB = (blob.size / 1_000_000).toFixed(1);
+    _log(`${_ts()} ✓ Download triggered: "${filename}"  ${sizeMB} MB  rendered in ${wallSec}s  avg ${(totalFrames/+wallSec).toFixed(0)} fps`);
     document.getElementById('rec-ov-done-detail').innerHTML =
       `${recW}×${recH} &nbsp;·&nbsp; 60 fps &nbsp;·&nbsp; ${durSec} s<br>${sizeMB} MB &nbsp;·&nbsp; gerendert in ${wallSec} s`;
     document.getElementById('rec-ov-progress').style.display = 'none';
     document.getElementById('rec-ov-done').style.display = '';
   } else {
-    try { await encoder.flush(); muxer.finalize(); } catch(e){}
+    _log(`${_ts()} Cancelled — discarding ${_chunkCount} encoded chunks`);
+    try { await encoder.flush(); muxer.finalize(); } catch(e){ _warn(`${_ts()} Cleanup flush/finalize error (expected on cancel):`, e); }
     _abortRecording(prevW, prevH);
     return;
   }
@@ -3272,6 +3340,7 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   canvas.width = W; canvas.height = H;
   gl.viewport(0, 0, W, H);
   _recState.active = false;
+  _log(`${_ts()} Preview restored to ${W}×${H}  total wall time: ${((performance.now()-_t0)/1000).toFixed(1)}s`);
   _rafId = requestAnimationFrame(animate);
 }
 
