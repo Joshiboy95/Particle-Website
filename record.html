@@ -2966,7 +2966,12 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   const encCfg = {
     codec: 'avc1.640034', width: recW, height: recH,
     bitrate: mbps * 1_000_000, framerate: 60,
-    bitrateMode: 'constant', latencyMode: 'quality',
+    bitrateMode: 'constant',
+    // 'realtime' forces the encoder to emit chunks without lookahead buffering,
+    // ensuring the first output chunk is the keyframe at f=0. 'quality' buffers
+    // ~285 frames before emitting, which makes the MP4 start on a P-frame —
+    // structurally invalid for NLEs like DaVinci Resolve.
+    latencyMode: 'realtime',
   };
   try {
     const sup = await VideoEncoder.isConfigSupported(encCfg);
@@ -3058,8 +3063,12 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
     if (outCtx) outCtx.drawImage(canvas, 0, 0, recW, recH);
 
     const ts = Math.round(f * 1_000_000 / 60);
-    const frame = new VideoFrame(outCanvas, { timestamp: ts, duration: Math.round(1_000_000 / 60) });
-    encoder.encode(frame, { keyFrame: f % 120 === 0 });
+    const frame = new VideoFrame(outCanvas, {
+      timestamp: ts,
+      duration: Math.round(1_000_000 / 60),
+      colorSpace: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false },
+    });
+    encoder.encode(frame, { keyFrame: f % 60 === 0 }); // keyframe every 1 s for NLE scrubbing
     frame.close();
 
     if (f % 30 === 0) {
