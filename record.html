@@ -745,6 +745,37 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
         <span style="font-size:11px;color:rgba(255,255,255,.4)">Sekunden (0–300)</span>
       </div>
 
+      <!-- Post-Processing -->
+      <div class="ctrl-name" style="font-size:11px;margin-bottom:4px;margin-top:14px;color:rgba(255,255,255,.45);letter-spacing:.03em">Nachbearbeitung</div>
+      <div class="ctrl">
+        <div class="ctrl-hd">
+          <span class="ctrl-name" style="font-size:11px">Schatten</span>
+          <span class="ctrl-val" id="v-rec-shadows">0</span>
+        </div>
+        <input type="range" id="s-rec-shadows" min="-50" max="50" step="1" value="0">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd">
+          <span class="ctrl-name" style="font-size:11px">Lichter</span>
+          <span class="ctrl-val" id="v-rec-highlights">0</span>
+        </div>
+        <input type="range" id="s-rec-highlights" min="-50" max="50" step="1" value="0">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd">
+          <span class="ctrl-name" style="font-size:11px">Kontrast</span>
+          <span class="ctrl-val" id="v-rec-contrast">0</span>
+        </div>
+        <input type="range" id="s-rec-contrast" min="-50" max="50" step="1" value="0">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-hd">
+          <span class="ctrl-name" style="font-size:11px">Schärfe</span>
+          <span class="ctrl-val" id="v-rec-sharpness">0</span>
+        </div>
+        <input type="range" id="s-rec-sharpness" min="0" max="100" step="1" value="0">
+      </div>
+
       <button class="btn-rec" id="btn-rec-start">◉ Aufnahme starten</button>
       <div class="rec-warn" id="rec-compat-msg" style="display:none"></div>
     </div>
@@ -2808,6 +2839,8 @@ _bindRangePair('s-comet-sh-pmin','s-comet-sh-pmax','v-comet-sh-pmin','v-comet-sh
 
 const _recState = { active: false, cancelled: false };
 let _recW = 3840, _recH = 2160, _recDurSec = 60, _recMbps = 100, _recWarmupSec = 10, _recOversample = 1;
+let _recShadows = 0, _recHighlights = 0, _recContrast = 0, _recSharpness = 0;
+let _ppCanvas = null, _ppGl = null, _ppProg = null, _ppTex = null, _ppVbo = null, _ppLoc = {};
 
 // ── Recording chip selectors ────────────────────────────────────────────
 function _setupChips(groupId, onChange) {
@@ -2842,6 +2875,16 @@ document.getElementById('rec-dur-val').addEventListener('input', e => {
 });
 document.getElementById('rec-warmup-val').addEventListener('input', e => {
   _recWarmupSec = Math.max(0, Math.min(300, +e.target.value || 0));
+});
+[['shadows','_recShadows'],['highlights','_recHighlights'],['contrast','_recContrast'],['sharpness','_recSharpness']].forEach(([k, varKey]) => {
+  document.getElementById('s-rec-' + k).addEventListener('input', e => {
+    const v = +e.target.value;
+    if (k === 'shadows')    _recShadows    = v;
+    else if (k === 'highlights') _recHighlights = v;
+    else if (k === 'contrast')   _recContrast   = v;
+    else                         _recSharpness  = v;
+    document.getElementById('v-rec-' + k).textContent = (v > 0 ? '+' : '') + v;
+  });
 });
 
 // ── Compatibility check ──────────────────────────────────────────────────
@@ -2890,6 +2933,84 @@ document.getElementById('btn-rec-again').addEventListener('click', () => {
   document.getElementById('rec-ov-done').style.display = 'none';
   document.getElementById('rec-prog-fill').style.width = '0%';
 });
+
+// ── Post-processing (GPU shader pass, lazy-init) ─────────────────────────────
+function _initPP(w, h) {
+  if (!_ppCanvas) {
+    _ppCanvas = document.createElement('canvas');
+    const pg = _ppCanvas.getContext('webgl', { preserveDrawingBuffer: true });
+    _ppGl = pg;
+    function mk(type, src) {
+      const s = pg.createShader(type); pg.shaderSource(s, src); pg.compileShader(s); return s;
+    }
+    const prog = pg.createProgram();
+    pg.attachShader(prog, mk(pg.VERTEX_SHADER, `
+      attribute vec2 aPos; varying vec2 vUv;
+      void main(){ vUv = aPos*.5+.5; gl_Position=vec4(aPos,0.,1.); }
+    `));
+    pg.attachShader(prog, mk(pg.FRAGMENT_SHADER, `
+      precision highp float;
+      uniform sampler2D uTex; uniform vec2 uSize;
+      uniform float uShadows,uHighlights,uContrast,uSharpness;
+      varying vec2 vUv;
+      void main(){
+        vec2 d=1./uSize;
+        vec4 c=texture2D(uTex,vUv);
+        if(uSharpness>0.001){
+          vec4 blur=(texture2D(uTex,vUv+vec2(d.x,0.))+texture2D(uTex,vUv-vec2(d.x,0.))+
+                     texture2D(uTex,vUv+vec2(0.,d.y))+texture2D(uTex,vUv-vec2(0.,d.y)))*.25;
+          c.rgb+=uSharpness*(c.rgb-blur.rgb)*3.;
+        }
+        float luma=dot(c.rgb,vec3(.2126,.7152,.0722));
+        c.rgb+=uShadows*(1.-smoothstep(0.,.5,luma))+uHighlights*smoothstep(.5,1.,luma);
+        c.rgb=clamp(.5+(c.rgb-.5)*(1.+uContrast),0.,1.);
+        gl_FragColor=vec4(clamp(c.rgb,0.,1.),c.a);
+      }
+    `));
+    pg.linkProgram(prog);
+    _ppProg = prog;
+    _ppLoc = {
+      aPos:       pg.getAttribLocation(prog,  'aPos'),
+      uTex:       pg.getUniformLocation(prog, 'uTex'),
+      uSize:      pg.getUniformLocation(prog, 'uSize'),
+      uShadows:   pg.getUniformLocation(prog, 'uShadows'),
+      uHighlights:pg.getUniformLocation(prog, 'uHighlights'),
+      uContrast:  pg.getUniformLocation(prog, 'uContrast'),
+      uSharpness: pg.getUniformLocation(prog, 'uSharpness'),
+    };
+    _ppVbo = pg.createBuffer();
+    pg.bindBuffer(pg.ARRAY_BUFFER, _ppVbo);
+    pg.bufferData(pg.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), pg.STATIC_DRAW);
+    _ppTex = pg.createTexture();
+    pg.bindTexture(pg.TEXTURE_2D, _ppTex);
+    pg.texParameteri(pg.TEXTURE_2D, pg.TEXTURE_MIN_FILTER, pg.LINEAR);
+    pg.texParameteri(pg.TEXTURE_2D, pg.TEXTURE_MAG_FILTER, pg.LINEAR);
+    pg.texParameteri(pg.TEXTURE_2D, pg.TEXTURE_WRAP_S, pg.CLAMP_TO_EDGE);
+    pg.texParameteri(pg.TEXTURE_2D, pg.TEXTURE_WRAP_T, pg.CLAMP_TO_EDGE);
+  }
+  if (_ppCanvas.width !== w || _ppCanvas.height !== h) { _ppCanvas.width = w; _ppCanvas.height = h; }
+}
+
+function _applyPP(src, w, h) {
+  _initPP(w, h);
+  const pg = _ppGl;
+  pg.viewport(0, 0, w, h);
+  pg.bindTexture(pg.TEXTURE_2D, _ppTex);
+  pg.pixelStorei(pg.UNPACK_FLIP_Y_WEBGL, true);
+  pg.texImage2D(pg.TEXTURE_2D, 0, pg.RGBA, pg.RGBA, pg.UNSIGNED_BYTE, src);
+  pg.useProgram(_ppProg);
+  pg.bindBuffer(pg.ARRAY_BUFFER, _ppVbo);
+  pg.enableVertexAttribArray(_ppLoc.aPos);
+  pg.vertexAttribPointer(_ppLoc.aPos, 2, pg.FLOAT, false, 0, 0);
+  pg.uniform1i(_ppLoc.uTex, 0);
+  pg.uniform2f(_ppLoc.uSize, w, h);
+  pg.uniform1f(_ppLoc.uShadows,    _recShadows    / 100);
+  pg.uniform1f(_ppLoc.uHighlights, _recHighlights / 100);
+  pg.uniform1f(_ppLoc.uContrast,   _recContrast   / 100);
+  pg.uniform1f(_ppLoc.uSharpness,  _recSharpness  / 100);
+  pg.drawArrays(pg.TRIANGLE_STRIP, 0, 4);
+  return _ppCanvas;
+}
 
 // ── Deterministic animation tick (same logic as animate() but time-controlled) ──
 function _animTickRec(now) {
@@ -3076,8 +3197,11 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
 
     if (outCtx) outCtx.drawImage(canvas, 0, 0, recW, recH);
 
+    const hasPP = _recShadows !== 0 || _recHighlights !== 0 || _recContrast !== 0 || _recSharpness !== 0;
+    const frameSource = hasPP ? _applyPP(outCanvas, recW, recH) : outCanvas;
+
     const ts = Math.round(f * 1_000_000 / 60);
-    const frame = new VideoFrame(outCanvas, {
+    const frame = new VideoFrame(frameSource, {
       timestamp: ts,
       duration: Math.round(1_000_000 / 60),
       colorSpace: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false },
