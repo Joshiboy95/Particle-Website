@@ -3151,10 +3151,13 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   statEl.textContent = '';
   fillEl.style.background = 'rgba(255,255,255,.2)';
   let recNow = 0;
+  let _warmupYieldMs = Date.now();
   for (let f = 0; f < warmupFrames; f++) {
     if (_recState.cancelled) { _abortRecording(prevW, prevH); return; }
     _animTickRec(recNow); recNow += DT;
-    if (f % 60 === 0) {
+    const wNow = Date.now();
+    if (wNow - _warmupYieldMs >= 200) {
+      _warmupYieldMs = wNow;
       fillEl.style.width = (f / Math.max(1, warmupFrames) * 30).toFixed(0) + '%';
       infoEl.textContent = `Vorwärmung ${f}/${warmupFrames} Frames…`;
       await new Promise(r => setTimeout(r, 0));
@@ -3187,11 +3190,14 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   // ── Frame loop ───────────────────────────────────────────────────────
   subEl.textContent = `${recW}×${recH}${osLabel} · ${mbps} Mbps · ${durSec} s`;
   const wallStart = Date.now();
+  let _lastYieldMs = wallStart;
   for (let f = 0; f < totalFrames; f++) {
     if (_recState.cancelled) break;
 
-    // Throttle if encoder queue backs up
-    while (encoder.encodeQueueSize > 8) await new Promise(r => setTimeout(r, 2));
+    // Non-blocking backpressure: yield once if encoder is heavily backed up.
+    // A spin-wait here (while queue > N, sleep 2ms) would serialize the whole
+    // pipeline to encoder speed — catastrophic with software H.264 (~150ms/frame).
+    if (encoder.encodeQueueSize > 20) await new Promise(r => setTimeout(r, 0));
 
     _animTickRec(recNow); recNow += DT;
 
@@ -3209,15 +3215,24 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
     encoder.encode(frame, { keyFrame: f < 5 || f % 60 === 0 }); // IDR at start + every 1 s
     frame.close();
 
-    if (f % 30 === 0) {
+    // UI updates: time-based (every ~200 ms) instead of every N frames,
+    // so we don't add hundreds of forced event-loop yields over a long recording.
+    const nowMs = Date.now();
+    if (nowMs - _lastYieldMs >= 200) {
+      _lastYieldMs = nowMs;
       const pct = f / totalFrames;
-      fillEl.style.width = (30 + pct * 70).toFixed(1) + '%';
-      const elapsedSec = (Date.now() - wallStart) / 1000;
+      const elapsedSec = (nowMs - wallStart) / 1000;
+      const renderFps = elapsedSec > 0.5 ? (f / elapsedSec).toFixed(0) : '…';
       const etaSec = pct > 0.01 ? ((1 - pct) / pct) * elapsedSec : null;
-      statEl.textContent = `Frame ${f.toLocaleString('de-DE')} / ${totalFrames.toLocaleString('de-DE')}`;
+      fillEl.style.width = (30 + pct * 70).toFixed(1) + '%';
+      statEl.textContent = `Frame ${f.toLocaleString('de-DE')} / ${totalFrames.toLocaleString('de-DE')} · ${renderFps} fps`;
       infoEl.textContent = etaSec != null
         ? `ETA ${etaSec >= 60 ? (etaSec/60|0)+'m ' : ''}${(etaSec%60|0)}s`
         : 'Berechne ETA…';
+      // Low render fps = software encoding. Show a hint after a few seconds.
+      if (elapsedSec > 5 && +renderFps < 15) {
+        subEl.textContent = `⚠ Langsam (~${renderFps} fps) — Hardware-Beschleunigung prüfen: chrome://gpu`;
+      }
       await new Promise(r => setTimeout(r, 0));
     }
   }
