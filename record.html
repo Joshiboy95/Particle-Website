@@ -3228,16 +3228,30 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
 
   // ── Frame loop ───────────────────────────────────────────────────────
   subEl.textContent = `${recW}×${recH}${osLabel} · ${mbps} Mbps · ${durSec} s`;
-  _log(`${_ts()} Frame loop start: ${totalFrames} frames`);
+  // Yield helper: scheduler.yield() has no minimum delay (unlike setTimeout 4ms floor),
+  // so encoder output callbacks get to run between every queue check.
+  const _yieldFn = (typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function')
+    ? () => scheduler.yield()
+    : () => new Promise(r => setTimeout(r, 0));
+
+  // Detect WebGL context loss (caused by GPU VRAM exhaustion from too-large queue).
+  let _ctxLost = false;
+  const _onCtxLost = e => { e.preventDefault(); _ctxLost = true; _err(`${_ts()} WebGL context lost — aborting`); };
+  canvas.addEventListener('webglcontextlost', _onCtxLost);
+
+  _log(`${_ts()} Frame loop start: ${totalFrames} frames  yieldFn=${typeof scheduler !== 'undefined' && scheduler.yield ? 'scheduler.yield' : 'setTimeout'}`);
   const wallStart = Date.now();
   let _lastYieldMs = wallStart;
   for (let f = 0; f < totalFrames; f++) {
     if (_recState.cancelled) { _log(`${_ts()} Cancelled at frame ${f}/${totalFrames}`); break; }
+    if (_ctxLost) { _err(`${_ts()} Stopping at frame ${f} — WebGL context lost`); break; }
 
-    // Non-blocking backpressure: yield once if encoder is heavily backed up.
-    // A spin-wait here (while queue > N, sleep 2ms) would serialize the whole
-    // pipeline to encoder speed — catastrophic with software H.264 (~150ms/frame).
-    if (encoder.encodeQueueSize > 20) await new Promise(r => setTimeout(r, 0));
+    // Backpressure: keep queue ≤ 4 frames.
+    // Each 4K VideoFrame holds ~33 MB of GPU/system memory; flooding the queue
+    // (e.g. 1800 frames × 33 MB ≈ 60 GB) kills the WebGL context.
+    // The while-loop also gives encoder output callbacks a chance to fire on
+    // every yield, so _chunkCount increments correctly.
+    while (encoder.encodeQueueSize > 4) await _yieldFn();
 
     _animTickRec(recNow); recNow += DT;
 
@@ -3292,6 +3306,13 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
   }
 
   fillEl.style.width = '100%';
+  if (_ctxLost) {
+    _err(`${_ts()} Aborting finalize — WebGL context was lost during frame loop`);
+    canvas.removeEventListener('webglcontextlost', _onCtxLost);
+    try { encoder.close(); } catch(_) {}
+    _abortRecording(prevW, prevH);
+    return;
+  }
   if (!_recState.cancelled) {
     _log(`${_ts()} Frame loop done — ${_chunkCount} chunks received so far. Flushing encoder…`);
     subEl.textContent = 'Datei wird finalisiert…';
@@ -3299,10 +3320,11 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
     infoEl.textContent = 'Encoder leert Puffer…';
     await new Promise(r => setTimeout(r, 0));
     try {
-      await encoder.flush();
+      const _flushTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('encoder flush timeout after 60s')), 60000));
+      await Promise.race([encoder.flush(), _flushTimeout]);
       _log(`${_ts()} Encoder flushed — total chunks: ${_chunkCount}  firstChunkTs: ${_firstChunkTs}`);
     } catch(e) {
-      _err(`${_ts()} encoder.flush() failed:`, e);
+      _err(`${_ts()} encoder.flush() failed/timed out:`, e);
     }
     try {
       muxer.finalize();
@@ -3329,12 +3351,18 @@ async function _startRecording(recW, recH, durSec, mbps, warmupSec = 10, oversam
     document.getElementById('rec-ov-done').style.display = '';
   } else {
     _log(`${_ts()} Cancelled — discarding ${_chunkCount} encoded chunks`);
-    try { await encoder.flush(); muxer.finalize(); } catch(e){ _warn(`${_ts()} Cleanup flush/finalize error (expected on cancel):`, e); }
+    try {
+      const _cancelFlushTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('flush timeout')), 10000));
+      await Promise.race([encoder.flush(), _cancelFlushTimeout]);
+      muxer.finalize();
+    } catch(e){ _warn(`${_ts()} Cleanup flush/finalize error (expected on cancel):`, e); }
+    canvas.removeEventListener('webglcontextlost', _onCtxLost);
     _abortRecording(prevW, prevH);
     return;
   }
 
   // Restore preview
+  canvas.removeEventListener('webglcontextlost', _onCtxLost);
   _recRenderW = 0; _recRenderH = 0;
   W = prevW; H = prevH;
   canvas.width = W; canvas.height = H;
