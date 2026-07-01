@@ -2960,25 +2960,12 @@ async function _startRecording(recW, recH, durSec, mbps) {
   }
   fillEl.style.background = '#3b82f6';
 
-  // ── Open save file dialog ─────────────────────────────────────────────
-  subEl.textContent = 'Speicherort wählen…';
-  let writable;
-  try {
-    const fh = await window.showSaveFilePicker({
-      suggestedName: `particle-flow-${recW}x${recH}-${durSec}s.mp4`,
-      types: [{ description: 'MP4-Video', accept: { 'video/mp4': ['.mp4'] } }],
-    });
-    writable = await fh.createWritable();
-  } catch (e) {
-    _abortRecording(prevW, prevH);
-    return;
-  }
-
-  // ── Setup encoder + muxer ─────────────────────────────────────────────
+  // ── Setup encoder + muxer (in-memory, saved to Downloads automatically) ─
+  subEl.textContent = 'Initialisiere Encoder…';
   const muxer = new Mp4Muxer.Muxer({
-    target: new Mp4Muxer.FileSystemWritableFileStreamTarget(writable),
+    target: new Mp4Muxer.ArrayBufferTarget(),
     video: { codec: 'avc', width: recW, height: recH },
-    fastStart: 'fragmented',
+    fastStart: 'in-memory',
   });
   const encoder = new VideoEncoder({
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
@@ -3030,15 +3017,23 @@ async function _startRecording(recW, recH, durSec, mbps) {
     await new Promise(r => setTimeout(r, 0));
     await encoder.flush();
     muxer.finalize();
-    await writable.close();
+    const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `particle-flow-${recW}x${recH}-${durSec}s.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
     const wallSec = ((Date.now() - wallStart) / 1000).toFixed(0);
-    const sizeMB = ((totalFrames * mbps * 1_000_000 / 60) / 8 / 1_000_000).toFixed(0);
+    const sizeMB = (blob.size / 1_000_000).toFixed(0);
     document.getElementById('rec-ov-done-detail').innerHTML =
-      `${recW}×${recH} &nbsp;·&nbsp; 60 fps &nbsp;·&nbsp; ${durSec} s<br>~${sizeMB} MB &nbsp;·&nbsp; gerendert in ${wallSec} s`;
+      `${recW}×${recH} &nbsp;·&nbsp; 60 fps &nbsp;·&nbsp; ${durSec} s<br>${sizeMB} MB &nbsp;·&nbsp; gerendert in ${wallSec} s`;
     document.getElementById('rec-ov-progress').style.display = 'none';
     document.getElementById('rec-ov-done').style.display = '';
   } else {
-    try { await encoder.flush(); muxer.finalize(); await writable.close(); } catch(e){}
+    try { await encoder.flush(); muxer.finalize(); } catch(e){}
     _abortRecording(prevW, prevH);
     return;
   }
