@@ -755,6 +755,7 @@ input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: none; b
 <script>
 const canvas = document.getElementById('c');
 let gl = null;
+let _rafId = null; // rAF handle for the realtime preview loop — recording pauses/resumes it
 const BG = '#07070f';
 const BG_R = 7/255, BG_G = 7/255, BG_B = 15/255;
 let W = 0, H = 0;
@@ -3059,8 +3060,6 @@ function _abortRecording(prevW, prevH) {
   _recState.active = false;
   _rafId = requestAnimationFrame(animate);
 }
-
-let _rafId = null;
 </script>
 </body>
 </html>
