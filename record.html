@@ -781,6 +781,7 @@ let _rafId = null; // rAF handle for the realtime preview loop — recording pau
 const BG = '#07070f';
 const BG_R = 7/255, BG_G = 7/255, BG_B = 15/255;
 let W = 0, H = 0;
+let _recRenderW = 0, _recRenderH = 0; // oversampled render dims during recording (0 = use W/H)
 
 let _dpr = 1; // devicePixelRatio, einmalig gesetzt
 
@@ -2807,8 +2808,6 @@ _bindRangePair('s-comet-sh-pmin','s-comet-sh-pmax','v-comet-sh-pmin','v-comet-sh
 
 const _recState = { active: false, cancelled: false };
 let _recW = 3840, _recH = 2160, _recDurSec = 60, _recMbps = 100, _recWarmupSec = 10, _recOversample = 1;
-// 0 = normal (uses W/H); set to oversample dims during recording so animate()'s render viewport is enlarged
-let _recRenderW = 0, _recRenderH = 0;
 
 // ── Recording chip selectors ────────────────────────────────────────────
 function _setupChips(groupId, onChange) {

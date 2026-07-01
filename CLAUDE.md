@@ -357,7 +357,7 @@ Same burst/pause principle as Fireworks, but spawning comet-tails instead of cli
 
 ## Git Workflow
 
-This repository uses a simple single-file workflow. Push directly to `main` — no PRs, no feature branches.
+This repository uses a simple single-file workflow. **Always push directly to `main` — no PRs, no feature branches.** The authoritative branch is `main`.
 
 ### Committing
 ```bash
